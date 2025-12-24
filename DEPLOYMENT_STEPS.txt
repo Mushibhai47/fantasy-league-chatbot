@@ -1,0 +1,132 @@
+DEPLOYMENT GUIDE - Fantasy League Chatbot
+==========================================
+
+QUICK DEPLOY: Railway (Backend) + Vercel (Frontend)
+Both are FREE and take 15-20 minutes total
+
+==================================================
+STEP 1: CREATE GITHUB REPOSITORY
+==================================================
+
+1. Go to: https://github.com/new
+2. Name: fantasy-league-chatbot
+3. Make it PRIVATE (to protect API keys)
+4. Click "Create repository"
+
+5. In your terminal:
+   cd C:\Users\DELL\Downloads\Rudy\fantasy-league-chatbot
+   git init
+   git add .
+   git commit -m "Milestone 2 complete - ready for deployment"
+   git remote add origin https://github.com/YOUR_USERNAME/fantasy-league-chatbot.git
+   git push -u origin main
+
+==================================================
+STEP 2: DEPLOY BACKEND TO RAILWAY
+==================================================
+
+1. Go to: https://railway.app
+2. Click "Login" -> "Login with GitHub"
+3. Click "New Project" -> "Deploy from GitHub repo"
+4. Select "fantasy-league-chatbot"
+5. Set Root Directory to: backend
+6. Click "Deploy"
+
+7. ADD ENVIRONMENT VARIABLES:
+   - Click on your service -> "Variables" tab
+   - Add these one by one:
+
+   DATABASE_URL=sqlite:///./fantasy_chatbot.db
+   RAZZBALL_API_KEY=71yqx5zf-be81-2a2c-860p-oxch3odcgszm
+   RAZZBALL_API_BASE_URL=https://api.razzball.com/mlb
+   PLAYER_REFERENCE_URL=https://razzball.com/mlbamidsshhh/
+   SECRET_KEY=random-secret-key-here
+   ALGORITHM=HS256
+   FRONTEND_URL=*
+   OPENAI_API_KEY=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
+   ENVIRONMENT=production
+
+8. Go to "Settings" -> "Generate Domain"
+9. COPY YOUR RAILWAY URL (save it for Step 3!)
+   Example: https://fantasy-league-chatbot-production.up.railway.app
+
+==================================================
+STEP 3: DEPLOY FRONTEND TO VERCEL
+==================================================
+
+1. Go to: https://vercel.com
+2. Click "Sign Up" -> "Continue with GitHub"
+3. Click "Add New" -> "Project"
+4. Import "fantasy-league-chatbot"
+5. Configure:
+   - Root Directory: frontend
+   - Framework: Next.js
+   - Build Command: npm run build
+
+6. ADD ENVIRONMENT VARIABLE:
+   Name: NEXT_PUBLIC_API_URL
+   Value: https://YOUR-RAILWAY-URL.up.railway.app/api
+   
+   (Replace YOUR-RAILWAY-URL with the URL from Step 2)
+
+7. Click "Deploy"
+8. Wait 2-3 minutes
+9. COPY YOUR VERCEL URL
+   Example: https://fantasy-league-chatbot.vercel.app
+
+==================================================
+STEP 4: UPDATE BACKEND CORS
+==================================================
+
+1. Go back to Railway
+2. Click on your backend service
+3. Go to "Variables"
+4. Update FRONTEND_URL to your Vercel URL:
+   
+   FRONTEND_URL=https://your-vercel-url.vercel.app
+
+5. Save (it will redeploy automatically)
+
+==================================================
+STEP 5: TEST IT!
+==================================================
+
+1. Open your Vercel URL in browser
+2. Upload Fantrax_Small_Test.csv
+3. Ask: "Who are the top 10 most valuable free agent hitters and pitchers?"
+4. Should see $ dollar values!
+
+==================================================
+SEND TO RUDY
+==================================================
+
+"Live demo is ready!
+
+URL: https://your-vercel-url.vercel.app
+
+How to test:
+1. Upload your Fantrax/CBS/NFBC CSV
+2. Ask questions about your roster
+3. Get AI recommendations with $ dollar values from your Razzball API!
+
+Try: 'Who are the top 10 most valuable free agent hitters and pitchers?'"
+
+==================================================
+TROUBLESHOOTING
+==================================================
+
+Backend not working?
+- Railway -> Your service -> Deployments -> View Logs
+- Check for errors
+
+Frontend not working?
+- Vercel -> Your project -> Deployments -> Runtime Logs
+- Check NEXT_PUBLIC_API_URL is correct
+
+Projections not showing?
+- Check Railway logs for "Error fetching projections"
+- Verify RAZZBALL_API_KEY is correct
+
+==================================================
+COST: $0/month (both Railway and Vercel are free!)
+==================================================
