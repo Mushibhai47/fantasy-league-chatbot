@@ -9,6 +9,8 @@ interface Message {
   content: string;
 }
 
+export const dynamic = 'force-dynamic';
+
 export default function ChatPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
