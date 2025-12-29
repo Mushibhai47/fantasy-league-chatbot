@@ -27,26 +27,37 @@ IMPORTANT GUIDELINES:
 5. When projections are NOT available, you may use general baseball knowledge to provide helpful advice
 
 UNDERSTANDING DOLLAR VALUES ($):
-- Dollar values make different stats comparable (e.g., 50 HR is amazing, but 50 R is bad)
-- All categories (HR, RBI, R, SB, AVG for hitters; W, SV, ERA, WHIP, K for pitchers) are converted to $
+- $ = Overall dollar value (total of all category $)
+- Category dollars for HITTERS: $R (runs), $HR (home runs), $RBI (RBIs), $SB (stolen bases), $AVG (batting avg)
+- Category dollars for PITCHERS: $W (wins), $SV (saves), $K (strikeouts), $ERA (ERA), $WHIP (WHIP)
 - A $20 hitter and $20 pitcher have equal fantasy value
-- Focus on $ when comparing players or recommending pickups
+- Players worth $1+ are above replacement level
+
+DISPLAYING TABLES:
+When users ask for comparisons, rankings, or team analysis, USE MARKDOWN TABLES like this:
+| Player | Pos | $ | $HR | $RBI | $R | $SB | $AVG |
+|--------|-----|---|-----|------|----|----|------|
+| Juan Soto | OF | $35.2 | $8.1 | $7.2 | $6.5 | $1.2 | $12.2 |
+
+For team comparisons, show:
+| Team | Total $ | $HR | $RBI | $R | $SB | $AVG | Players $1+ |
+|------|---------|-----|------|----|----|------|-------------|
 
 Your job is to help users make smart fantasy baseball decisions by analyzing:
-- Current roster composition and team needs
+- Current roster composition and team needs (with category $ breakdowns)
 - Available free agents and their $ values
-- Player projections (especially dollar values)
+- Player projections (especially dollar values by category)
 - Roster strategy and category balance
 - Position eligibility and scarcity
 
 When making recommendations:
 1. Reference player name, position, MLB team, and $ VALUE (when available)
-2. Sort free agents by $ value to find the most valuable pickups
-3. When comparing players, use $ value as the primary metric
-4. Consider roster needs and position scarcity
-5. Be specific about projected stats (HR, RBI, ERA, etc.) when available
+2. Show category dollar breakdowns ($HR, $RBI, etc.) to explain WHY a player is valuable
+3. Use markdown tables when comparing multiple players or teams
+4. Sort recommendations by $ value to find the most valuable pickups
+5. For team analysis, sum up all category $ and compare to league averages
 
-Keep responses concise and actionable. Help users win their leagues!"""
+Keep responses detailed but organized. Use tables and bullet points. Help users win their leagues!"""
 
     def get_chat_completion(
         self,
@@ -106,20 +117,27 @@ Keep responses concise and actionable. Help users win their leagues!"""
         # Add user's roster if provided
         if context_data.get('my_roster'):
             roster_text = "USER'S CURRENT ROSTER:\n"
-            for player in context_data['my_roster'][:20]:  # Limit to 20 players
-                roster_text += f"- {player.get('name')} ({player.get('position')}, {player.get('mlb_team')})"
+            for player in context_data['my_roster'][:25]:  # Limit to 25 players
+                roster_text += f"- {player.get('name')} ({player.get('position')}, {player.get('mlb_team')}) | Owner: {player.get('owner')}"
 
                 # Include dollar value if available (MOST IMPORTANT)
                 if player.get('dollar_value') is not None:
-                    roster_text += f" | $VALUE: ${player.get('dollar_value')}"
+                    roster_text += f" | $: {player.get('dollar_value')}"
 
-                # Include stats if available
-                if player.get('hr') or player.get('rbi'):
-                    roster_text += f" | Proj: "
-                    if player.get('hr'):
-                        roster_text += f"{player.get('hr')} HR"
-                    if player.get('rbi'):
-                        roster_text += f", {player.get('rbi')} RBI"
+                # Include category dollars if available
+                cat_dollars = []
+                if player.get('$HR') is not None: cat_dollars.append(f"$HR:{player.get('$HR')}")
+                if player.get('$RBI') is not None: cat_dollars.append(f"$RBI:{player.get('$RBI')}")
+                if player.get('$R') is not None: cat_dollars.append(f"$R:{player.get('$R')}")
+                if player.get('$SB') is not None: cat_dollars.append(f"$SB:{player.get('$SB')}")
+                if player.get('$AVG') is not None: cat_dollars.append(f"$AVG:{player.get('$AVG')}")
+                if player.get('$W') is not None: cat_dollars.append(f"$W:{player.get('$W')}")
+                if player.get('$SV') is not None: cat_dollars.append(f"$SV:{player.get('$SV')}")
+                if player.get('$K') is not None: cat_dollars.append(f"$K:{player.get('$K')}")
+                if player.get('$ERA') is not None: cat_dollars.append(f"$ERA:{player.get('$ERA')}")
+                if player.get('$WHIP') is not None: cat_dollars.append(f"$WHIP:{player.get('$WHIP')}")
+                if cat_dollars:
+                    roster_text += f" | {', '.join(cat_dollars)}"
 
                 roster_text += "\n"
             context_parts.append(roster_text)
@@ -127,28 +145,27 @@ Keep responses concise and actionable. Help users win their leagues!"""
         # Add free agents if provided
         if context_data.get('free_agents'):
             fa_text = "TOP FREE AGENTS AVAILABLE:\n"
-            for player in context_data['free_agents'][:15]:  # Limit to 15 players
+            for player in context_data['free_agents'][:20]:  # Limit to 20 players
                 fa_text += f"- {player.get('name')} ({player.get('position')}, {player.get('mlb_team')})"
 
                 # Include dollar value if available (MOST IMPORTANT)
                 if player.get('dollar_value') is not None:
-                    fa_text += f" | $VALUE: ${player.get('dollar_value')}"
+                    fa_text += f" | $: {player.get('dollar_value')}"
 
-                # Include stats if available
-                if player.get('hr') or player.get('rbi'):
-                    fa_text += f" | Proj: "
-                    if player.get('hr'):
-                        fa_text += f"{player.get('hr')} HR"
-                    if player.get('rbi'):
-                        fa_text += f", {player.get('rbi')} RBI"
-
-                # Include pitcher stats if available
-                if player.get('era') or player.get('whip'):
-                    fa_text += f" | Proj: "
-                    if player.get('era'):
-                        fa_text += f"{player.get('era')} ERA"
-                    if player.get('whip'):
-                        fa_text += f", {player.get('whip')} WHIP"
+                # Include category dollars if available
+                cat_dollars = []
+                if player.get('$HR') is not None: cat_dollars.append(f"$HR:{player.get('$HR')}")
+                if player.get('$RBI') is not None: cat_dollars.append(f"$RBI:{player.get('$RBI')}")
+                if player.get('$R') is not None: cat_dollars.append(f"$R:{player.get('$R')}")
+                if player.get('$SB') is not None: cat_dollars.append(f"$SB:{player.get('$SB')}")
+                if player.get('$AVG') is not None: cat_dollars.append(f"$AVG:{player.get('$AVG')}")
+                if player.get('$W') is not None: cat_dollars.append(f"$W:{player.get('$W')}")
+                if player.get('$SV') is not None: cat_dollars.append(f"$SV:{player.get('$SV')}")
+                if player.get('$K') is not None: cat_dollars.append(f"$K:{player.get('$K')}")
+                if player.get('$ERA') is not None: cat_dollars.append(f"$ERA:{player.get('$ERA')}")
+                if player.get('$WHIP') is not None: cat_dollars.append(f"$WHIP:{player.get('$WHIP')}")
+                if cat_dollars:
+                    fa_text += f" | {', '.join(cat_dollars)}"
 
                 fa_text += "\n"
             context_parts.append(fa_text)

@@ -57,36 +57,67 @@ async def chat(
             projections_df = projection_service.fetch_projections()
             logger.info(f"Fetched {len(projections_df)} projections from Razzball API")
 
-            # Enrich roster with projections (API uses $STAT$ format)
+            # Enrich roster with projections (API uses $STAT$ format for category dollars)
             for player in user_roster:
                 proj = projection_service.get_player_projection(player['name'])
                 if proj:
-                    player['hr'] = proj.get('$HR$')
-                    player['rbi'] = proj.get('$RBI$')
-                    player['sb'] = proj.get('$SB$')
-                    player['avg'] = proj.get('$AVG$')
-                    player['r'] = proj.get('$R$')
-                    player['era'] = proj.get('$ERA$')
-                    player['whip'] = proj.get('$WHIP$')
-                    player['w'] = proj.get('$W$')
-                    player['sv'] = proj.get('$SV$')
+                    # Overall dollar value
+                    player['dollar_value'] = proj.get('$')
+                    # Category dollar values (for 5x5 analysis)
+                    player['$R'] = proj.get('$R$')
+                    player['$HR'] = proj.get('$HR$')
+                    player['$RBI'] = proj.get('$RBI$')
+                    player['$SB'] = proj.get('$SB$')
+                    player['$AVG'] = proj.get('$AVG$')
+                    player['$W'] = proj.get('$W$')
+                    player['$SV'] = proj.get('$SV$')
+                    player['$K'] = proj.get('$K$')
+                    player['$ERA'] = proj.get('$ERA$')
+                    player['$WHIP'] = proj.get('$WHIP$')
+                    # Raw stat projections
+                    player['hr'] = proj.get('HR')
+                    player['rbi'] = proj.get('RBI')
+                    player['sb'] = proj.get('SB')
+                    player['avg'] = proj.get('AVG')
+                    player['r'] = proj.get('R')
+                    player['era'] = proj.get('ERA')
+                    player['whip'] = proj.get('WHIP')
+                    player['w'] = proj.get('W')
+                    player['sv'] = proj.get('SV')
+                    player['k'] = proj.get('K')
+                    player['has_projections'] = True
+                else:
+                    player['has_projections'] = False
 
             # Enrich free agents with projections (top 50 only for context)
             free_agents = []
             for player in free_agents_db[:50]:
                 proj = projection_service.get_player_projection(player['name'])
                 if proj:
-                    # Add projection stats
-                    player['hr'] = proj.get('$HR$')
-                    player['rbi'] = proj.get('$RBI$')
-                    player['sb'] = proj.get('$SB$')
-                    player['avg'] = proj.get('$AVG$')
-                    player['r'] = proj.get('$R$')
-                    player['era'] = proj.get('$ERA$')
-                    player['whip'] = proj.get('$WHIP$')
-                    player['w'] = proj.get('$W$')
-                    player['sv'] = proj.get('$SV$')
-                    player['dollar_value'] = proj.get('$')  # Overall $ value
+                    # Overall dollar value
+                    player['dollar_value'] = proj.get('$')
+                    # Category dollar values (for 5x5 analysis)
+                    player['$R'] = proj.get('$R$')
+                    player['$HR'] = proj.get('$HR$')
+                    player['$RBI'] = proj.get('$RBI$')
+                    player['$SB'] = proj.get('$SB$')
+                    player['$AVG'] = proj.get('$AVG$')
+                    player['$W'] = proj.get('$W$')
+                    player['$SV'] = proj.get('$SV$')
+                    player['$K'] = proj.get('$K$')
+                    player['$ERA'] = proj.get('$ERA$')
+                    player['$WHIP'] = proj.get('$WHIP$')
+                    # Raw stat projections
+                    player['hr'] = proj.get('HR')
+                    player['rbi'] = proj.get('RBI')
+                    player['sb'] = proj.get('SB')
+                    player['avg'] = proj.get('AVG')
+                    player['r'] = proj.get('R')
+                    player['era'] = proj.get('ERA')
+                    player['whip'] = proj.get('WHIP')
+                    player['w'] = proj.get('W')
+                    player['sv'] = proj.get('SV')
+                    player['k'] = proj.get('K')
                     player['has_projections'] = True
                     logger.info(f"Matched projection for {player['name']}: ${proj.get('$')}")
                 else:
