@@ -1,0 +1,51 @@
+====================================
+  RAZZBALL CHATBOT - START HERE
+====================================
+
+HOW TO RUN:
+-----------
+1. Double-click: RUN_ME.bat
+2. Wait 10 seconds for servers to start
+3. Open your browser
+
+WHAT TO OPEN:
+-------------
+Embed Widget:      http://localhost:3003
+Admin Dashboard:   http://localhost:3004
+
+TESTING EMBED WIDGET:
+---------------------
+1. Open: http://localhost:3003
+2. API key is OPTIONAL:
+   - Skip to use free tier (100 messages/month)
+   - Or paste your own OpenAI API key for unlimited usage
+3. Click "Next"
+4. Upload your CSV file
+5. Start chatting!
+
+TESTING ADMIN DASHBOARD:
+-------------------------
+1. Open: http://localhost:3004
+2. Login:
+   Username: rudy
+   Password: razzball2024
+
+3. Explore all views!
+
+TO STOP EVERYTHING:
+-------------------
+Double-click: STOP_ALL.bat
+
+TROUBLESHOOTING:
+----------------
+If port already in use:
+1. Run STOP_ALL.bat first
+2. Then run RUN_ME.bat again
+
+If admin shows dashboard instead of login:
+1. Press F12
+2. Type: localStorage.clear()
+3. Press Enter
+4. Refresh page
+
+====================================

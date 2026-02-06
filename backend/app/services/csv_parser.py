@@ -111,6 +111,7 @@ class CSVParser:
             player = {
                 'fantrax_id': None,  # CBS has no IDs
                 'nfbc_id': None,
+                'cbs_player_name': player_str.strip(),  # Full CBS format: "Aaron Judge OF | NYY"
                 'name': name,
                 'mlb_team': mlb_team,
                 'position': None,  # Could extract from Player string if needed

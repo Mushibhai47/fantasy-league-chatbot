@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Razzball Chatbot - Admin Dashboard</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div id="admin-dashboard">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-container">
+                    <span class="logo-icon">⚾</span>
+                    <h1 class="logo-text">Razzball Admin</h1>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-view="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a href="#" class="nav-item" data-view="users">
+                    <span class="nav-icon">👥</span>
+                    <span class="nav-text">Active Users</span>
+                </a>
+                <a href="#" class="nav-item" data-view="analytics">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-text">Analytics</span>
+                </a>
+                <a href="#" class="nav-item" data-view="chats">
+                    <span class="nav-icon">💬</span>
+                    <span class="nav-text">Chat Logs</span>
+                </a>
+                <a href="#" class="nav-item" data-view="limits">
+                    <span class="nav-icon">🎯</span>
+                    <span class="nav-text">Message Limits</span>
+                </a>
+                <a href="#" class="nav-item" data-view="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">Settings</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="admin-info">
+                    <div class="admin-avatar">👤</div>
+                    <div class="admin-details">
+                        <div class="admin-name" id="admin-name">Admin</div>
+                        <a href="#" class="logout-link" id="logout-btn">Logout</a>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="content-header">
+                <h2 class="page-title" id="page-title">Dashboard</h2>
+                <div class="header-actions">
+                    <button class="refresh-btn" id="refresh-btn" title="Refresh Data">
+                        <span class="refresh-icon">🔄</span>
+                    </button>
+                    <div class="time-display" id="current-time"></div>
+                </div>
+            </header>
+
+            <!-- Dashboard View -->
+            <div class="view-container active" id="view-dashboard">
+                <!-- Stats Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card primary">
+                        <div class="stat-icon">👥</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Total Users</div>
+                            <div class="stat-value" id="stat-total-users">0</div>
+                            <div class="stat-change positive">+12% this week</div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card secondary">
+                        <div class="stat-icon">💬</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Total Chats</div>
+                            <div class="stat-value" id="stat-total-chats">0</div>
+                            <div class="stat-change positive">+8% this week</div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card accent">
+                        <div class="stat-icon">🔥</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Active Now</div>
+                            <div class="stat-value" id="stat-active-now">0</div>
+                            <div class="stat-change neutral">Live</div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card success">
+                        <div class="stat-icon">💰</div>
+                        <div class="stat-content">
+                            <div class="stat-label">API Cost Today</div>
+                            <div class="stat-value" id="stat-api-cost">$0.00</div>
+                            <div class="stat-change neutral">Estimated</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Row -->
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3>Usage Over Time</h3>
+                            <select class="chart-filter" id="usage-filter">
+                                <option value="7">Last 7 Days</option>
+                                <option value="30">Last 30 Days</option>
+                                <option value="90">Last 90 Days</option>
+                            </select>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="usage-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3>Top Queries</h3>
+                        </div>
+                        <div class="query-list" id="top-queries">
+                            <!-- Will be populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="activity-card">
+                    <div class="activity-header">
+                        <h3>Recent Activity</h3>
+                        <button class="view-all-btn">View All</button>
+                    </div>
+                    <div class="activity-list" id="recent-activity">
+                        <!-- Will be populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users View -->
+            <div class="view-container" id="view-users">
+                <div class="users-header">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="user-search" placeholder="Search users...">
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="active">Active</button>
+                        <button class="filter-btn" data-filter="inactive">Inactive</button>
+                    </div>
+                </div>
+
+                <div class="users-table-container">
+                    <table class="users-table" id="users-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Email</th>
+                                <th>League ID</th>
+                                <th>Last Active</th>
+                                <th>Total Chats</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-tbody">
+                            <!-- Will be populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Analytics View -->
+            <div class="view-container" id="view-analytics">
+                <div class="analytics-grid">
+                    <div class="analytics-card">
+                        <h3>User Engagement</h3>
+                        <div class="metric-row">
+                            <span>Average Chats per User:</span>
+                            <strong id="avg-chats">0</strong>
+                        </div>
+                        <div class="metric-row">
+                            <span>Average Session Duration:</span>
+                            <strong id="avg-duration">0 min</strong>
+                        </div>
+                        <div class="metric-row">
+                            <span>Return Rate:</span>
+                            <strong id="return-rate">0%</strong>
+                        </div>
+                    </div>
+
+                    <div class="analytics-card">
+                        <h3>Popular Features</h3>
+                        <div class="feature-list" id="popular-features">
+                            <!-- Will be populated dynamically -->
+                        </div>
+                    </div>
+
+                    <div class="analytics-card">
+                        <h3>Peak Usage Hours</h3>
+                        <div class="heatmap-container" id="usage-heatmap">
+                            <!-- Will be populated dynamically -->
+                        </div>
+                    </div>
+
+                    <div class="analytics-card">
+                        <h3>API Usage</h3>
+                        <div class="api-stats" id="api-stats">
+                            <div class="api-stat-item">
+                                <span>Total API Calls:</span>
+                                <strong id="total-api-calls">0</strong>
+                            </div>
+                            <div class="api-stat-item">
+                                <span>Total Tokens Used:</span>
+                                <strong id="total-tokens">0</strong>
+                            </div>
+                            <div class="api-stat-item">
+                                <span>Estimated Cost:</span>
+                                <strong id="estimated-cost">$0.00</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Logs View -->
+            <div class="view-container" id="view-chats">
+                <div class="chats-header">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="chat-search" placeholder="Search chats...">
+                    </div>
+                    <select class="date-filter" id="chat-date-filter">
+                        <option value="today">Today</option>
+                        <option value="week">This Week</option>
+                        <option value="month">This Month</option>
+                        <option value="all">All Time</option>
+                    </select>
+                </div>
+
+                <div class="chats-list" id="chats-list">
+                    <!-- Will be populated dynamically -->
+                </div>
+            </div>
+
+            <!-- Settings View -->
+            <div class="view-container" id="view-settings">
+                <div class="settings-grid">
+                    <div class="settings-card">
+                        <h3>Admin Access</h3>
+                        <div class="admin-list">
+                            <div class="admin-item">
+                                <div class="admin-avatar">👤</div>
+                                <div class="admin-info-text">
+                                    <div class="admin-name-text">Rudy</div>
+                                    <div class="admin-role">Owner</div>
+                                </div>
+                                <span class="admin-badge">Active</span>
+                            </div>
+                            <div class="admin-item">
+                                <div class="admin-avatar">👤</div>
+                                <div class="admin-info-text">
+                                    <div class="admin-name-text">Grey</div>
+                                    <div class="admin-role">Administrator</div>
+                                </div>
+                                <span class="admin-badge">Active</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h3>System Configuration</h3>
+                        <div class="setting-item">
+                            <label>API Base URL</label>
+                            <input type="text" id="api-base-url" value="https://chatbot.razzball.com/api" readonly>
+                        </div>
+                        <div class="setting-item">
+                            <label>Max File Size (MB)</label>
+                            <input type="number" id="max-file-size" value="10">
+                        </div>
+                        <div class="setting-item">
+                            <label>Session Timeout (minutes)</label>
+                            <input type="number" id="session-timeout" value="30">
+                        </div>
+                        <button class="save-settings-btn">Save Settings</button>
+                    </div>
+
+                    <div class="settings-card">
+                        <h3>Message Limits</h3>
+                        <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+                            Control monthly message limits for users. Users with their own API key have unlimited messages.
+                        </p>
+                        <div class="setting-item">
+                            <label>Default Monthly Limit (New Users)</label>
+                            <input type="number" id="default-message-limit" value="100" min="0">
+                        </div>
+                        <div class="setting-item">
+                            <label>Current Active Users</label>
+                            <div id="limit-stats" style="padding: 10px; background: #f5f5f5; border-radius: 4px; margin-top: 5px;">
+                                <div style="font-size: 14px; color: #666;">Loading...</div>
+                            </div>
+                        </div>
+                        <button class="save-settings-btn" id="save-limit-btn">Update Default Limit</button>
+                        <button class="view-all-btn" id="view-all-limits-btn" style="margin-top: 10px;">View All User Limits</button>
+                    </div>
+
+                    <div class="settings-card">
+                        <h3>Notifications</h3>
+                        <div class="toggle-item">
+                            <label>Email on New User</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="toggle-item">
+                            <label>Email Daily Report</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="toggle-item">
+                            <label>Email on Error</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h3>Danger Zone</h3>
+                        <button class="danger-btn" id="clear-logs-btn">Clear All Logs</button>
+                        <button class="danger-btn" id="reset-stats-btn">Reset Statistics</button>
+                        <button class="danger-btn" id="export-data-btn">Export All Data</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Message Limits View -->
+            <div class="view-container" id="view-limits">
+                <div class="limits-header">
+                    <h3>User Message Limits</h3>
+                    <div class="limits-summary" id="limits-summary">
+                        <div class="summary-item">
+                            <span class="summary-label">Total Users:</span>
+                            <span class="summary-value" id="total-limit-users">0</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Avg Usage:</span>
+                            <span class="summary-value" id="avg-usage">0%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="limits-table-container">
+                    <table class="limits-table">
+                        <thead>
+                            <tr>
+                                <th>User ID</th>
+                                <th>Used</th>
+                                <th>Limit</th>
+                                <th>Remaining</th>
+                                <th>Usage %</th>
+                                <th>Reset Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="limits-table-body">
+                            <!-- Will be populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+
+        <!-- Login Screen (shown if not authenticated) -->
+        <div class="login-screen" id="login-screen">
+            <div class="login-card">
+                <div class="login-header">
+                    <span class="login-logo">⚾</span>
+                    <h2>Razzball Admin</h2>
+                    <p>Dashboard Login</p>
+                </div>
+                <form id="login-form">
+                    <div class="input-group">
+                        <label>Username</label>
+                        <input type="text" id="login-username" placeholder="Enter username" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Password</label>
+                        <input type="password" id="login-password" placeholder="Enter password" required>
+                    </div>
+                    <div class="login-error" id="login-error"></div>
+                    <button type="submit" class="login-btn">
+                        <span id="login-btn-text">Login</span>
+                        <span class="login-loader" id="login-loader" style="display: none;">⏳</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loader"></div>
+        <div class="loading-text">Loading...</div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

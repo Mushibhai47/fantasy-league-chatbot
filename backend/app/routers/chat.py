@@ -1,15 +1,19 @@
-"""Chat Router - GPT-4 Powered Fantasy Baseball Assistant"""
+"""Chat Router - GPT-4o-mini Powered Fantasy Baseball Assistant with Razzball Projections"""
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
-from app.models import League, Roster
+from app.models import League, Roster, Chat, Player, User
 from app.services.openai_service import OpenAIService
 from app.services.projection_service import ProjectionService
+from app.services.message_limit_service import MessageLimitService
 from app.schemas.chat import ChatRequest, ChatResponse
 import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Global projection cache (fetched once, reused for all chats)
+_projections_df = None
 
 
 @router.post("/", response_model=ChatResponse)
@@ -18,11 +22,8 @@ async def chat(
     db: Session = Depends(get_db)
 ):
     """
-    Chat with GPT-4 AI assistant about fantasy baseball roster
-
-    Requires:
-    - league_id: UUID of uploaded league
-    - message: User's question
+    FAST Chat with GPT-4o-mini AI assistant about fantasy baseball roster
+    No external API calls - uses only database data for speed
     """
     try:
         # Get league
@@ -30,132 +31,214 @@ async def chat(
         if not league:
             raise HTTPException(status_code=404, detail="League not found")
 
-        # Get user's roster and free agents from database
-        all_rosters = db.query(Roster).filter(Roster.league_id == request.league_id).all()
+        # Check message limits (unless user provides their own API key)
+        messages_remaining = None
+        limit_message = None
 
-        user_roster = []
-        free_agents_db = []
+        if not request.user_api_key:
+            # User is using backend API key, so enforce limits
+            user_id = request.user_id or str(request.league_id)  # Use league_id as fallback
+            user = MessageLimitService.get_or_create_user(user_id, db)
+
+            # Check if user can send message
+            can_send, remaining, message = MessageLimitService.can_send_message(user, db)
+
+            if not can_send:
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "error": "Monthly message limit reached",
+                        "message": message,
+                        "messages_remaining": 0,
+                        "reset_date": user.limit_reset_date.isoformat()
+                    }
+                )
+
+            messages_remaining = remaining
+            limit_message = message
+            logger.info(f"User {user_id}: {remaining} messages remaining")
+
+        # Get OWNED players first (most important for analysis)
+        owned_rosters = db.query(Roster).options(
+            joinedload(Roster.player)
+        ).filter(
+            Roster.league_id == request.league_id,
+            Roster.team_owner != 'Free Agent'
+        ).limit(150).all()
+
+        # Fallback: try string comparison if no results
+        if not owned_rosters:
+            logger.info(f"Trying string league_id: {str(request.league_id)}")
+            owned_rosters = db.query(Roster).options(
+                joinedload(Roster.player)
+            ).filter(
+                Roster.league_id == str(request.league_id),
+                Roster.team_owner != 'Free Agent'
+            ).limit(150).all()
+
+        # Get FREE AGENTS separately (limit to 30)
+        fa_rosters = db.query(Roster).options(
+            joinedload(Roster.player)
+        ).filter(
+            Roster.league_id == request.league_id,
+            Roster.team_owner == 'Free Agent'
+        ).limit(30).all()
+
+        # Fallback for free agents too
+        if not fa_rosters:
+            fa_rosters = db.query(Roster).options(
+                joinedload(Roster.player)
+            ).filter(
+                Roster.league_id == str(request.league_id),
+                Roster.team_owner == 'Free Agent'
+            ).limit(30).all()
+
+        # Combine
+        all_rosters = owned_rosters + fa_rosters
+        logger.info(f"Found {len(owned_rosters)} owned players, {len(fa_rosters)} free agents")
+
+        # Debug: log unique owners to see what's in the database
+        if owned_rosters:
+            unique_owners = set(r.team_owner for r in owned_rosters[:20])
+            logger.info(f"Sample owners in DB: {unique_owners}")
+
+        # Get projections (cached globally - only slow on first request)
+        global _projections_df
+        dollar_lookup = {}
+
+        # PERFORMANCE FIX: Only fetch if cache is empty
+        if _projections_df is None or len(_projections_df) == 0:
+            logger.info("⏳ Fetching projections (first time only)...")
+            projection_service = ProjectionService(projection_type="ros")
+            try:
+                _projections_df = projection_service.fetch_projections()
+                logger.info(f"✅ Projections cached: {len(_projections_df)} players")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not fetch projections: {e}")
+                _projections_df = None
+        else:
+            logger.info(f"✅ Using cached projections: {len(_projections_df)} players")
+
+        # Build fast lookup dictionary from cache
+        if _projections_df is not None:
+            try:
+                import re
+                for _, row in _projections_df.iterrows():
+                    proj_name = str(row.get('Name', '')).lower()
+                    # Clean projection name (remove [player id=XXX] tags)
+                    proj_name = re.sub(r'\[player id=\d+\]|\[/player\]', '', proj_name).strip()
+                    dollar = row.get('$', row.get('dollar_value', ''))
+                    if dollar and str(dollar) != 'nan':
+                        dollar_lookup[proj_name] = f"${dollar}"
+                logger.info(f"💰 Dollar values ready: {len(dollar_lookup)} players")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not build dollar lookup: {e}")
+
+        def get_player_dollar_value(player_name: str) -> str:
+            """Get dollar value from pre-built lookup"""
+            name_lower = player_name.lower().strip()
+            # Exact match first
+            if name_lower in dollar_lookup:
+                return f" {dollar_lookup[name_lower]}"
+            # Partial match (for names like "Juan Soto" matching "juan soto")
+            for proj_name, dollar in dollar_lookup.items():
+                if name_lower in proj_name or proj_name in name_lower:
+                    return f" {dollar}"
+            return ""
+
+        # Group players by team owner
+        teams = {}
+        free_agents = []
 
         for roster in all_rosters:
             player = roster.player
+            owner = roster.team_owner
+            dollar_val = get_player_dollar_value(player.name)
 
-            player_data = {
-                'name': player.name,
-                'mlb_team': player.team,
-                'position': player.position,
-                'owner': roster.team_owner,
-            }
-
-            if roster.team_owner == 'Free Agent':
-                free_agents_db.append(player_data)
+            if owner == 'Free Agent':
+                if len(free_agents) < 20:
+                    free_agents.append(f"{player.name} ({player.position}, {player.team}){dollar_val}")
             else:
-                user_roster.append(player_data)
+                if owner not in teams:
+                    teams[owner] = []
+                teams[owner].append(f"{player.name} ({player.position}, {player.team}){dollar_val}")
 
-        # Fetch latest projections from Razzball API
-        projection_service = ProjectionService()
-        try:
-            projections_df = projection_service.fetch_projections()
-            logger.info(f"Fetched {len(projections_df)} projections from Razzball API")
+        # Build clear context text for AI
+        team_names = list(teams.keys())
+        context_text = f"FANTASY LEAGUE DATA ({league.league_type}):\n"
+        context_text += f"TEAMS IN LEAGUE: {', '.join(team_names)}\n\n"
 
-            # Enrich roster with projections (API uses $STAT$ format for category dollars)
-            for player in user_roster:
-                proj = projection_service.get_player_projection(player['name'])
-                if proj:
-                    # Overall dollar value
-                    player['dollar_value'] = proj.get('$')
-                    # Category dollar values (for 5x5 analysis)
-                    player['$R'] = proj.get('$R$')
-                    player['$HR'] = proj.get('$HR$')
-                    player['$RBI'] = proj.get('$RBI$')
-                    player['$SB'] = proj.get('$SB$')
-                    player['$AVG'] = proj.get('$AVG$')
-                    player['$W'] = proj.get('$W$')
-                    player['$SV'] = proj.get('$SV$')
-                    player['$K'] = proj.get('$K$')
-                    player['$ERA'] = proj.get('$ERA$')
-                    player['$WHIP'] = proj.get('$WHIP$')
-                    # Raw stat projections
-                    player['hr'] = proj.get('HR')
-                    player['rbi'] = proj.get('RBI')
-                    player['sb'] = proj.get('SB')
-                    player['avg'] = proj.get('AVG')
-                    player['r'] = proj.get('R')
-                    player['era'] = proj.get('ERA')
-                    player['whip'] = proj.get('WHIP')
-                    player['w'] = proj.get('W')
-                    player['sv'] = proj.get('SV')
-                    player['k'] = proj.get('K')
-                    player['has_projections'] = True
-                else:
-                    player['has_projections'] = False
+        # List each team's roster
+        for team_name, players in teams.items():
+            context_text += f"TEAM '{team_name}' ROSTER ({len(players)} players):\n"
+            for p in players[:12]:  # Limit players per team
+                context_text += f"  - {p}\n"
+            if len(players) > 12:
+                context_text += f"  ... and {len(players) - 12} more players\n"
+            context_text += "\n"
 
-            # Enrich free agents with projections (top 50 only for context)
-            free_agents = []
-            for player in free_agents_db[:50]:
-                proj = projection_service.get_player_projection(player['name'])
-                if proj:
-                    # Overall dollar value
-                    player['dollar_value'] = proj.get('$')
-                    # Category dollar values (for 5x5 analysis)
-                    player['$R'] = proj.get('$R$')
-                    player['$HR'] = proj.get('$HR$')
-                    player['$RBI'] = proj.get('$RBI$')
-                    player['$SB'] = proj.get('$SB$')
-                    player['$AVG'] = proj.get('$AVG$')
-                    player['$W'] = proj.get('$W$')
-                    player['$SV'] = proj.get('$SV$')
-                    player['$K'] = proj.get('$K$')
-                    player['$ERA'] = proj.get('$ERA$')
-                    player['$WHIP'] = proj.get('$WHIP$')
-                    # Raw stat projections
-                    player['hr'] = proj.get('HR')
-                    player['rbi'] = proj.get('RBI')
-                    player['sb'] = proj.get('SB')
-                    player['avg'] = proj.get('AVG')
-                    player['r'] = proj.get('R')
-                    player['era'] = proj.get('ERA')
-                    player['whip'] = proj.get('WHIP')
-                    player['w'] = proj.get('W')
-                    player['sv'] = proj.get('SV')
-                    player['k'] = proj.get('K')
-                    player['has_projections'] = True
-                    logger.info(f"Matched projection for {player['name']}: ${proj.get('$')}")
-                else:
-                    player['has_projections'] = False
-                    logger.warning(f"No projection match for {player['name']}")
-                free_agents.append(player)
+        # List free agents or note if none
+        if free_agents:
+            context_text += "TOP FREE AGENTS:\n"
+            for fa in free_agents:
+                context_text += f"  - {fa}\n"
+        else:
+            context_text += "NOTE: No free agents in this data (CSV only contains owned players)\n"
 
-        except Exception as e:
-            logger.warning(f"Could not fetch projections: {str(e)}. Proceeding without projections.")
-            free_agents = free_agents_db[:50]
+        logger.info(f"Context built: {len(teams)} teams, {len(free_agents)} free agents shown")
 
-        # Build context for AI
+        # Build context for OpenAI (use simple format it can understand)
         context_data = {
-            'my_roster': user_roster,
-            'free_agents': free_agents,
+            'league_context': context_text,
             'league_info': {
                 'league_type': league.league_type,
-                'total_players': len(all_rosters),
-                'free_agents': len(free_agents_db)
+                'total_teams': len(teams),
+                'team_names': list(teams.keys())
             }
         }
 
-        # Get AI response
+        # Get AI response using FAST gpt-4o-mini
         openai_service = OpenAIService()
         ai_response = openai_service.get_chat_completion(
             user_message=request.message,
-            conversation_history=request.conversation_history if hasattr(request, 'conversation_history') else None,
             context_data=context_data
         )
+
+        # Save chat to database for admin dashboard
+        try:
+            chat_record = Chat(
+                league_id=str(request.league_id),
+                user_message=request.message,
+                bot_response=ai_response
+            )
+            db.add(chat_record)
+            db.commit()
+        except Exception as e:
+            logger.warning(f"Could not save chat: {e}")
+            db.rollback()
+
+        # Increment message usage counter (only if using backend API key)
+        if not request.user_api_key:
+            try:
+                user_id = request.user_id or str(request.league_id)
+                user = MessageLimitService.get_or_create_user(user_id, db)
+                MessageLimitService.increment_usage(user, db)
+                # Update remaining count
+                messages_remaining = user.monthly_limit - user.messages_used
+                logger.info(f"User {user_id} used 1 message, {messages_remaining} remaining")
+            except Exception as e:
+                logger.warning(f"Could not increment usage: {e}")
 
         return ChatResponse(
             message=request.message,
             response=ai_response,
-            tokens_used=0  # We can add token counting later if needed
+            tokens_used=0,
+            messages_remaining=messages_remaining,
+            limit_info=limit_message
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in chat endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error generating response: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

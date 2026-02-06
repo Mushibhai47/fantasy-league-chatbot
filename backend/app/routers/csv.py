@@ -78,8 +78,9 @@ async def upload_csv(
             else:
                 owned_count += 1
 
-        # Bulk insert all roster entries at once (much faster)
-        db.bulk_save_objects(roster_entries)
+        # Add roster entries properly (bulk_save_objects has type conversion issues)
+        for roster in roster_entries:
+            db.add(roster)
         db.commit()
 
         # Return response

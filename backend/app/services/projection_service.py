@@ -109,9 +109,107 @@ class ProjectionService:
                 return _PROJECTION_CACHE[self.projection_type]
             raise
 
+    def get_player_projection_by_fantrax_id(self, fantrax_id: str) -> Optional[Dict]:
+        """
+        Get projection for a specific player by Fantrax ID (most reliable)
+
+        Args:
+            fantrax_id: Fantrax player ID (e.g., '*02z0s*')
+
+        Returns:
+            Dict with player projection data or None
+        """
+        try:
+            df = self.fetch_projections()
+
+            if 'FantraxID' not in df.columns:
+                logger.warning("FantraxID column not found in projections")
+                return None
+
+            # Match by Fantrax ID (exact match)
+            player_row = df[df['FantraxID'] == fantrax_id]
+
+            if not player_row.empty:
+                return player_row.iloc[0].to_dict()
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting player projection by Fantrax ID: {str(e)}")
+            return None
+
+    def get_player_projection_by_nfbc_id(self, nfbc_id: int) -> Optional[Dict]:
+        """
+        Get projection for a specific player by NFBC ID
+
+        Args:
+            nfbc_id: NFBC player ID (e.g., 8956)
+
+        Returns:
+            Dict with player projection data or None
+        """
+        try:
+            df = self.fetch_projections()
+
+            if 'NFBCID' not in df.columns:
+                logger.warning("NFBCID column not found in projections")
+                return None
+
+            # Match by NFBC ID (exact match)
+            # Handle both int and string comparison
+            player_row = df[df['NFBCID'].astype(str) == str(nfbc_id)]
+
+            if not player_row.empty:
+                return player_row.iloc[0].to_dict()
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting player projection by NFBC ID: {str(e)}")
+            return None
+
+    def get_player_projection_by_cbs_name(self, cbs_name: str) -> Optional[Dict]:
+        """
+        Get projection for a specific player by CBS Sports Name format
+
+        Args:
+            cbs_name: CBS player name (e.g., 'Aaron Judge OF | NYY')
+
+        Returns:
+            Dict with player projection data or None
+        """
+        try:
+            df = self.fetch_projections()
+
+            if 'CBSSportsName' not in df.columns:
+                logger.warning("CBSSportsName column not found in projections")
+                return None
+
+            # Normalize the CBS name for matching (strip whitespace, lowercase)
+            search_name = cbs_name.strip().lower()
+
+            # Try exact match first
+            player_row = df[df['CBSSportsName'].str.strip().str.lower() == search_name]
+
+            if player_row.empty:
+                # Try partial match (CBS format may have extra spaces or variations)
+                player_row = df[df['CBSSportsName'].str.strip().str.lower().str.contains(
+                    search_name.split('|')[0].strip(),  # Match just the name part before |
+                    na=False, regex=False
+                )]
+
+            if not player_row.empty:
+                return player_row.iloc[0].to_dict()
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting player projection by CBS name: {str(e)}")
+            return None
+
     def get_player_projection(self, player_name: str) -> Optional[Dict]:
         """
-        Get projection for a specific player by name
+        Get projection for a specific player by name (fallback method)
 
         Args:
             player_name: Player name to search for
@@ -176,6 +274,52 @@ class ProjectionService:
         except Exception as e:
             logger.error(f"Error getting player projection: {str(e)}")
             return None
+
+    def get_player_projection_smart(
+        self,
+        player_name: str,
+        fantrax_id: Optional[str] = None,
+        nfbc_id: Optional[int] = None,
+        cbs_name: Optional[str] = None
+    ) -> Optional[Dict]:
+        """
+        Smart player projection lookup - tries IDs first, then falls back to name
+
+        Args:
+            player_name: Player name (fallback)
+            fantrax_id: Fantrax player ID (e.g., '*02z0s*')
+            nfbc_id: NFBC player ID (e.g., 8956)
+            cbs_name: CBS player name (e.g., 'Aaron Judge OF | NYY')
+
+        Returns:
+            Dict with player projection data or None
+        """
+        # Try Fantrax ID first (most reliable)
+        if fantrax_id:
+            proj = self.get_player_projection_by_fantrax_id(fantrax_id)
+            if proj:
+                logger.debug(f"Matched {player_name} by Fantrax ID: {fantrax_id}")
+                return proj
+
+        # Try NFBC ID
+        if nfbc_id:
+            proj = self.get_player_projection_by_nfbc_id(nfbc_id)
+            if proj:
+                logger.debug(f"Matched {player_name} by NFBC ID: {nfbc_id}")
+                return proj
+
+        # Try CBS name
+        if cbs_name:
+            proj = self.get_player_projection_by_cbs_name(cbs_name)
+            if proj:
+                logger.debug(f"Matched {player_name} by CBS name: {cbs_name}")
+                return proj
+
+        # Fallback to name matching
+        proj = self.get_player_projection(player_name)
+        if proj:
+            logger.debug(f"Matched {player_name} by name (fallback)")
+        return proj
 
     def get_top_free_agents(
         self,

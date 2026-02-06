@@ -16,15 +16,34 @@ class OpenAIService:
     """GPT-4 chat service for fantasy baseball recommendations"""
 
     def __init__(self):
-        self.model = "gpt-4"
+        self.model = "gpt-4o-mini"  # Fast model for all queries
+        self.mini_model = "gpt-4o-mini"  # Same fast model
         self.system_prompt = """You are an expert fantasy baseball advisor for Razzball.com.
 
-IMPORTANT GUIDELINES:
-1. Primarily use player data provided in the context below (roster, free agents, positions, teams)
-2. When Razzball projections are provided, ALWAYS reference them in your recommendations
-3. The most important projection is the "dollar_value" ($) - this converts all categories to one scale
-4. Dollar values ($): $1 = replacement level, $20+ = elite player. Use this to compare hitters vs pitchers!
-5. When projections are NOT available, you may use general baseball knowledge to provide helpful advice
+You have access to LEAGUE ROSTER DATA with Razzball projections (dollar values).
+
+UNDERSTANDING DOLLAR VALUES ($):
+- $ = Overall projected fantasy value for the season
+- $20+ = Elite player (star)
+- $10-19 = Very good starter
+- $5-9 = Solid contributor
+- $1-4 = Replacement level
+- Negative $ = Below replacement level
+
+WHAT YOU CAN DO:
+- Analyze any team's roster using their $ values
+- Compare teams by total roster value
+- Identify weaknesses (positions with low $ players)
+- Recommend trades between teams
+- If free agents exist, recommend best pickups by $ value
+
+CRITICAL RULES:
+1. ONLY use player data from the context provided
+2. Reference specific players and their $ values
+3. Give actionable advice based on the numbers
+4. Be concise but specific
+
+When analyzing a team, mention their best players (highest $) and weakest spots (lowest $)!
 
 UNDERSTANDING DOLLAR VALUES ($):
 - $ = Overall dollar value (total of all category $)
@@ -39,9 +58,13 @@ When users ask for comparisons, rankings, or team analysis, USE MARKDOWN TABLES 
 |--------|-----|---|-----|------|----|----|------|
 | Juan Soto | OF | $35.2 | $8.1 | $7.2 | $6.5 | $1.2 | $12.2 |
 
-For team comparisons, show:
-| Team | Total $ | $HR | $RBI | $R | $SB | $AVG | Players $1+ |
-|------|---------|-----|------|----|----|------|-------------|
+For team comparisons (when you receive LEAGUE ROSTER DATA):
+1. Group players by team
+2. For each team, sum the total $ for all players shown (these are already filtered to $1+)
+3. Count how many players each team has
+4. Create a comparison table:
+| Team | Total $ | # Players $1+ | Avg $/Player |
+|------|---------|---------------|--------------|
 
 Your job is to help users make smart fantasy baseball decisions by analyzing:
 - Current roster composition and team needs (with category $ breakdowns)
@@ -58,6 +81,89 @@ When making recommendations:
 5. For team analysis, sum up all category $ and compare to league averages
 
 Keep responses detailed but organized. Use tables and bullet points. Help users win their leagues!"""
+
+    def _filter_roster_by_question(self, roster: List[Dict], user_message: str) -> List[Dict]:
+        """
+        Filter roster to only include relevant players based on user's question
+        This prevents token limit issues
+        """
+        user_lower = user_message.lower()
+        import re
+
+        # First, check if a specific team is mentioned (higher priority than comparison detection)
+        # Look for patterns like "Team RG", "RG team", "for RG", "on RG", "(RG)"
+        # Team name must be 2-4 ALL-CAPS letters, keywords can be any case
+        # Use inline (?i:...) for case-insensitive keywords while requiring caps for team names
+        pattern1 = re.search(r'\b(?i:team)\s+([A-Z]{2,4})\b', user_message)
+        pattern2 = re.search(r'\b(?i:for|on)\s+([A-Z]{2,4})\b', user_message)
+        pattern3 = re.search(r'\(([A-Z]{2,4})\)', user_message)
+        pattern4 = re.search(r'\b([A-Z]{2,4})\s+(?i:team)\b', user_message)
+        team_match = pattern1 or pattern2 or pattern3 or pattern4
+
+        # Check if this is a comparison/analysis question requiring multi-team data
+        comparison_keywords = [
+            'compare to', 'compared to', 'comparison',
+            'versus', 'vs', 'vs.',
+            'other teams', 'all teams', 'each team',
+            'league average', 'league-wide', 'standings',
+            'rank teams', 'team rankings', 'best team', 'worst team',
+            'how does my team', 'how does team'
+        ]
+        is_comparison = any(keyword in user_lower for keyword in comparison_keywords)
+
+        # If a specific team is mentioned WITHOUT multi-team comparison keywords, filter to that team
+        if team_match and not is_comparison:
+            # Extract team name from the matched pattern (all patterns capture in group 1)
+            team_name = team_match.group(1).upper()
+            # Filter to only this team's players
+            filtered = [p for p in roster if p.get('owner', '').upper() == team_name]
+            if filtered:
+                logger.info(f"Single team query detected - sending {len(filtered)} players from Team {team_name}")
+                return filtered
+
+        # If this is a comparison question, send top players from ALL teams
+        if is_comparison:
+            # For comparison questions, send top players from each team (to stay under token limit)
+            # Group players by owner
+            from collections import defaultdict
+            teams = defaultdict(list)
+
+            for player in roster:
+                owner = player.get('owner', 'Unknown')
+                if owner != 'Free Agent':  # Skip free agents for team comparisons
+                    teams[owner].append(player)
+
+            # Determine how many players per team based on league size
+            num_teams = len(teams)
+            if num_teams <= 6:
+                players_per_team = 15  # Small league - send more players
+            elif num_teams <= 12:
+                players_per_team = 8   # Medium league - 8 players/team = ~96 total
+            else:
+                players_per_team = 5   # Large league - 5 players/team = ~75 total
+
+            # For each team, take top N players by dollar value ($1+)
+            filtered_roster = []
+            for owner, players in teams.items():
+                # Filter to $1+ players first
+                valuable_players = [p for p in players if float(p.get('dollar_value', 0) or 0) >= 1.0]
+                # Sort by dollar value descending
+                sorted_players = sorted(
+                    valuable_players,
+                    key=lambda x: float(x.get('dollar_value', 0) or 0),
+                    reverse=True
+                )
+                # Take top N from this team
+                filtered_roster.extend(sorted_players[:players_per_team])
+
+            logger.info(f"Comparison query detected - sending top {players_per_team} players ($1+) from {len(teams)} teams ({len(filtered_roster)} total players)")
+            return filtered_roster
+
+        # If no team specified, return top players by dollar value (limit to 150 players)
+        # Sort by dollar value descending
+        sorted_roster = sorted(roster, key=lambda x: float(x.get('dollar_value', 0) or 0), reverse=True)
+        logger.info(f"General query - sending top 150 players by dollar value")
+        return sorted_roster[:150]
 
     def get_chat_completion(
         self,
@@ -84,20 +190,38 @@ Keep responses detailed but organized. Use tables and bullet points. Help users 
             if conversation_history:
                 messages.extend(conversation_history)
 
-            # Add context data if provided
+            # Add context data if provided (filter roster based on question)
             if context_data:
+                # Filter roster to only relevant players
+                if context_data.get('my_roster'):
+                    context_data['my_roster'] = self._filter_roster_by_question(
+                        context_data['my_roster'],
+                        user_message
+                    )
+
                 context_message = self._build_context_message(context_data)
+                # Log context size for debugging
+                context_chars = len(context_message)
+                est_context_tokens = context_chars // 4  # Rough estimate: 4 chars = 1 token
+                logger.info(f"Context message: {context_chars} chars (~{est_context_tokens} tokens)")
                 messages.append({"role": "system", "content": context_message})
 
             # Add user message
             messages.append({"role": "user", "content": user_message})
 
-            # Get completion from GPT-4
+            # Detect if this is a comparison query - use faster/cheaper model
+            comparison_keywords = ['compare', 'comparison', 'versus', 'vs', 'other teams', 'all teams', 'standings', 'rank teams']
+            is_comparison = any(kw in user_message.lower() for kw in comparison_keywords)
+            model_to_use = self.mini_model if is_comparison else self.model
+
+            logger.info(f"Using model: {model_to_use} (comparison={is_comparison})")
+
+            # Get completion from GPT-4o-mini (FAST)
             response = client.chat.completions.create(
-                model=self.model,
+                model=model_to_use,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=800,
+                max_tokens=400,  # Reduced for faster responses
             )
 
             # Extract response
@@ -107,39 +231,61 @@ Keep responses detailed but organized. Use tables and bullet points. Help users 
             return ai_message
 
         except Exception as e:
-            logger.error(f"Error getting GPT-4 completion: {str(e)}")
+            error_msg = str(e)
+            logger.error(f"Error getting GPT-4 completion: {error_msg}")
+
+            # Check if it's a token limit error
+            if "context_length_exceeded" in error_msg or "maximum context length" in error_msg:
+                logger.warning("Token limit exceeded - trying with GPT-4o-mini and reduced response size")
+                # Try again with mini model and smaller max_tokens
+                try:
+                    response = client.chat.completions.create(
+                        model=self.mini_model,  # Use faster model
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=300,  # Further reduced
+                    )
+                    ai_message = response.choices[0].message.content
+                    logger.info(f"Response generated with {self.mini_model} and reduced tokens ({len(ai_message)} chars)")
+                    return ai_message
+                except Exception as retry_error:
+                    logger.error(f"Retry failed: {str(retry_error)}")
+                    return "Your request involves too much data. Please try asking about a specific team instead of comparing all teams."
+
             return "I'm having trouble processing your request right now. Please try again."
 
     def _build_context_message(self, context_data: Dict) -> str:
         """Build context message from roster/projection data"""
         context_parts = []
 
-        # Add user's roster if provided
-        if context_data.get('my_roster'):
-            roster_text = "USER'S CURRENT ROSTER:\n"
-            for player in context_data['my_roster'][:25]:  # Limit to 25 players
-                roster_text += f"- {player.get('name')} ({player.get('position')}, {player.get('mlb_team')}) | Owner: {player.get('owner')}"
+        # New format: direct league context text
+        if context_data.get('league_context'):
+            context_parts.append(context_data['league_context'])
 
-                # Include dollar value if available (MOST IMPORTANT)
-                if player.get('dollar_value') is not None:
-                    roster_text += f" | $: {player.get('dollar_value')}"
+        # Legacy format: user's roster if provided
+        elif context_data.get('my_roster'):
+            roster = context_data['my_roster']
 
-                # Include category dollars if available
-                cat_dollars = []
-                if player.get('$HR') is not None: cat_dollars.append(f"$HR:{player.get('$HR')}")
-                if player.get('$RBI') is not None: cat_dollars.append(f"$RBI:{player.get('$RBI')}")
-                if player.get('$R') is not None: cat_dollars.append(f"$R:{player.get('$R')}")
-                if player.get('$SB') is not None: cat_dollars.append(f"$SB:{player.get('$SB')}")
-                if player.get('$AVG') is not None: cat_dollars.append(f"$AVG:{player.get('$AVG')}")
-                if player.get('$W') is not None: cat_dollars.append(f"$W:{player.get('$W')}")
-                if player.get('$SV') is not None: cat_dollars.append(f"$SV:{player.get('$SV')}")
-                if player.get('$K') is not None: cat_dollars.append(f"$K:{player.get('$K')}")
-                if player.get('$ERA') is not None: cat_dollars.append(f"$ERA:{player.get('$ERA')}")
-                if player.get('$WHIP') is not None: cat_dollars.append(f"$WHIP:{player.get('$WHIP')}")
-                if cat_dollars:
-                    roster_text += f" | {', '.join(cat_dollars)}"
+            # Check if this is multi-team data (for comparisons)
+            owners = set(p.get('owner') for p in roster if p.get('owner') != 'Free Agent')
+            is_multi_team = len(owners) > 1
 
-                roster_text += "\n"
+            if is_multi_team:
+                # For comparisons, use ULTRA COMPACT format - just Name | Team | $
+                # This saves massive tokens and GPT-4 can aggregate the data
+                roster_text = "LEAGUE ROSTER DATA (Top $1+ players from each team):\n"
+                roster_text += "Format: Name | Team | Total$\n"
+                for player in roster:
+                    name = player.get('name', 'Unknown')
+                    owner = player.get('owner', '?')
+                    dollar = player.get('dollar_value', '?')
+                    roster_text += f"{name}|{owner}|${dollar}\n"
+            else:
+                # Single team - compact format to save tokens
+                roster_text = "USER'S CURRENT ROSTER:\n"
+                for player in roster:
+                    roster_text += f"{player.get('name')} | {player.get('owner')} | ${player.get('dollar_value', '?')}\n"
+
             context_parts.append(roster_text)
 
         # Add free agents if provided

@@ -20,6 +20,7 @@ class Player(Base):
     # Platform-specific IDs
     fantrax_id = Column(String(50), index=True)  # *05ajh*
     nfbc_id = Column(Integer, index=True)  # 11802
+    cbs_player_name = Column(String(255), index=True)  # "Aaron Judge OF | NYY"
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

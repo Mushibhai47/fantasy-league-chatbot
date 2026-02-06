@@ -120,6 +120,10 @@ class PlayerMatcher:
 
         return None
 
+    def match_by_cbs_name(self, cbs_player_name: str) -> Optional[Player]:
+        """Match player by CBS player name (e.g., 'Aaron Judge OF | NYY')"""
+        return self.db.query(Player).filter(Player.cbs_player_name == cbs_player_name).first()
+
     def get_or_create_player(self, player_data: Dict) -> Player:
         """
         Try to match existing player, or create new one if not found
@@ -133,12 +137,18 @@ class PlayerMatcher:
         # Try to match first
         player = self.match_player(player_data)
 
+        # Also try CBS name if provided
+        if not player and player_data.get('cbs_player_name'):
+            player = self.match_by_cbs_name(player_data['cbs_player_name'])
+
         if player:
             # Update IDs if we have new ones
             if player_data.get('fantrax_id') and not player.fantrax_id:
                 player.fantrax_id = player_data['fantrax_id']
             if player_data.get('nfbc_id') and not player.nfbc_id:
                 player.nfbc_id = player_data['nfbc_id']
+            if player_data.get('cbs_player_name') and not player.cbs_player_name:
+                player.cbs_player_name = player_data['cbs_player_name']
             self.db.commit()
             return player
 
@@ -149,6 +159,7 @@ class PlayerMatcher:
             position=player_data.get('position'),
             fantrax_id=player_data.get('fantrax_id'),
             nfbc_id=player_data.get('nfbc_id'),
+            cbs_player_name=player_data.get('cbs_player_name'),
         )
         self.db.add(new_player)
         self.db.commit()

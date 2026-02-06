@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Razzball Fantasy Baseball Assistant</title>
+    <link rel="stylesheet" href="./embed.css">
+</head>
+<body>
+    <div id="razzball-chatbot-embed">
+        <!-- Setup Screen (first time users) -->
+        <div id="setup-screen" class="screen active">
+            <div class="setup-container">
+                <div class="logo-section">
+                    <h1>🏀 Razzball Fantasy Baseball Assistant</h1>
+                    <p>Get AI-powered advice for your fantasy baseball team</p>
+                </div>
+
+                <div class="setup-step" id="step-api-key" style="display: none;">
+                    <h2>OpenAI API Key (Optional)</h2>
+                    <p class="step-description">
+                        Add your own API key for unlimited messages, or use our free tier (100 messages/month).
+                        <a href="https://platform.openai.com/api-keys" target="_blank">Get an API key here</a>
+                    </p>
+                    <div class="input-group">
+                        <input
+                            type="password"
+                            id="api-key-input"
+                            placeholder="sk-...your-api-key"
+                            autocomplete="off"
+                        />
+                        <button id="save-api-key-btn" class="btn btn-primary">Save API Key</button>
+                        <button id="skip-api-key-btn" class="btn btn-secondary">Use Free Tier (100/month)</button>
+                    </div>
+                    <div id="api-key-status" class="status-message"></div>
+                </div>
+
+                <div class="setup-step" id="step-upload">
+                    <h2>Upload Your League CSV</h2>
+                    <p class="step-description">
+                        Upload your Fantrax, CBS, or NFBC league export file
+                    </p>
+                    <div class="upload-area" id="upload-area">
+                        <div class="upload-icon">📄</div>
+                        <p>Drag and drop your CSV file here</p>
+                        <p class="upload-or">or</p>
+                        <input type="file" id="file-input" accept=".csv" style="display: none;" />
+                        <button id="browse-btn" class="btn btn-secondary">Browse Files</button>
+                    </div>
+                    <div id="upload-status" class="status-message"></div>
+                </div>
+
+                <div class="setup-step" id="step-ready" style="display: none;">
+                    <h2>✅ All Set!</h2>
+                    <p class="step-description">
+                        Your API key is saved and your roster is loaded. Click below to start chatting!
+                    </p>
+                    <button id="start-chat-btn" class="btn btn-primary btn-large">Start Chatting</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Screen (main interface) -->
+        <div id="chat-screen" class="screen">
+            <div class="chat-header">
+                <h3>Razzball Fantasy Baseball Assistant</h3>
+                <div class="header-actions">
+                    <span id="league-indicator" class="league-badge">League Loaded</span>
+                    <button id="settings-btn" class="icon-btn" title="Settings">⚙️</button>
+                </div>
+            </div>
+
+            <div id="chat-messages" class="chat-messages">
+                <div class="message bot-message">
+                    <div class="message-content">
+                        <p>👋 Hi! I'm your fantasy baseball assistant. I can help you with:</p>
+                        <ul>
+                            <li>Player comparisons and recommendations</li>
+                            <li>Trade analysis</li>
+                            <li>Team composition and strategy</li>
+                            <li>Roster moves and pickups</li>
+                        </ul>
+                        <p>What would you like to know about your team?</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <textarea
+                    id="chat-input"
+                    placeholder="Ask me anything about your fantasy baseball team..."
+                    rows="2"
+                ></textarea>
+                <button id="send-btn" class="btn btn-primary">
+                    <span id="send-icon">Send</span>
+                    <span id="loading-icon" style="display: none;">●●●</span>
+                </button>
+            </div>
+
+            <!-- Message Counter -->
+            <div id="message-counter" style="display: none; text-align: center; padding: 8px; font-size: 13px; color: #666;"></div>
+
+            <div class="quick-actions">
+                <button class="quick-action-btn" data-query="Who should I pick up for home runs?">
+                    💪 HR Pickups
+                </button>
+                <button class="quick-action-btn" data-query="Analyze my team's weaknesses">
+                    📊 Team Analysis
+                </button>
+                <button class="quick-action-btn" data-query="Who are the best free agents available?">
+                    🆓 Top Free Agents
+                </button>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Settings</h3>
+                    <button id="close-modal-btn" class="icon-btn">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="setting-item">
+                        <label>OpenAI API Key (Optional)</label>
+                        <div class="input-group">
+                            <input
+                                type="password"
+                                id="settings-api-key"
+                                placeholder="No API key - using free tier (100 messages/month)"
+                                readonly
+                            />
+                            <button id="edit-api-key-btn" class="btn btn-secondary">Add/Edit</button>
+                        </div>
+                        <p class="setting-description">
+                            ✨ Add your own API key for unlimited messages.
+                            <a href="https://platform.openai.com/api-keys" target="_blank">Get one here</a>
+                        </p>
+                    </div>
+                    <div class="setting-item">
+                        <label>Message Usage</label>
+                        <div id="settings-usage-info" style="padding: 10px; background: #f5f5f5; border-radius: 4px; margin-top: 5px;">
+                            <div style="font-size: 14px; color: #666;">Loading...</div>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <label>League Data</label>
+                        <button id="reupload-btn" class="btn btn-secondary">Upload New CSV</button>
+                        <p class="setting-description">Upload a new league file to update your roster</p>
+                    </div>
+                    <div class="setting-item">
+                        <button id="clear-data-btn" class="btn btn-danger">Clear All Data</button>
+                        <p class="setting-description">This will remove your API key and league data</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="loading-overlay" style="display: none;">
+            <div class="spinner"></div>
+            <p>Processing...</p>
+        </div>
+    </div>
+
+    <script src="./embed.js"></script>
+</body>
+</html>
