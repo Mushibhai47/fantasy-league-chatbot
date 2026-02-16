@@ -212,6 +212,9 @@ async def chat(
         for roster in all_rosters:
             player = roster.player
             owner = roster.team_owner
+            # Clean team owner name (remove @ prefix from NFBC format)
+            if owner and owner.startswith('@'):
+                owner = owner[1:]
             dollar_val = get_player_dollar_value(player.name, player)
 
             if owner == 'Free Agent':
