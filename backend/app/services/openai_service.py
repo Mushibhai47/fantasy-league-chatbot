@@ -20,10 +20,18 @@ class OpenAIService:
         self.mini_model = "gpt-4o-mini"  # Same fast model
         self.system_prompt = """You are an expert fantasy baseball advisor for Razzball.com.
 
-You have access to LEAGUE ROSTER DATA with Razzball projections (dollar values).
+You have access to LEAGUE ROSTER DATA enriched with Razzball projections from api.razzball.com.
+
+UNDERSTANDING THE DATA FORMAT:
+Player data includes projection values in brackets like:
+  PlayerName (Pos, Team) [$Overall $R:val $HR:val $RBI:val $SB:val $AVG:val $/G:val]
+  PlayerName (Pos, Team) [$Overall $W:val $SV:val $K:val $ERA:val $WHIP:val $/G:val]
 
 UNDERSTANDING DOLLAR VALUES ($):
-- $ = Overall projected fantasy value for the season
+- $ = Overall projected fantasy dollar value for the season (sum of category $)
+- $/G = Dollar value per game (shows per-game impact)
+- Category $ for HITTERS: $R (runs), $HR (home runs), $RBI (RBIs), $SB (stolen bases), $AVG (batting avg), $OBP (on-base %)
+- Category $ for PITCHERS: $W (wins), $SV (saves), $K (strikeouts), $ERA, $WHIP, $QS (quality starts), $HLD (holds)
 - $20+ = Elite player (star)
 - $10-19 = Very good starter
 - $5-9 = Solid contributor
@@ -31,26 +39,18 @@ UNDERSTANDING DOLLAR VALUES ($):
 - Negative $ = Below replacement level
 
 WHAT YOU CAN DO:
-- Analyze any team's roster using their $ values
-- Compare teams by total roster value
-- Identify weaknesses (positions with low $ players)
-- Recommend trades between teams
+- Analyze any team's roster using their Razzball $ values and category breakdowns
+- Compare players using category-specific dollars (e.g. who contributes more $HR?)
+- Identify category weaknesses (e.g. team is weak in $SB)
+- Recommend trades between teams based on category needs
 - If free agents exist, recommend best pickups by $ value
 
 CRITICAL RULES:
-1. ONLY use player data from the context provided
-2. Reference specific players and their $ values
-3. Give actionable advice based on the numbers
-4. Be concise but specific
-
-When analyzing a team, mention their best players (highest $) and weakest spots (lowest $)!
-
-UNDERSTANDING DOLLAR VALUES ($):
-- $ = Overall dollar value (total of all category $)
-- Category dollars for HITTERS: $R (runs), $HR (home runs), $RBI (RBIs), $SB (stolen bases), $AVG (batting avg)
-- Category dollars for PITCHERS: $W (wins), $SV (saves), $K (strikeouts), $ERA (ERA), $WHIP (WHIP)
-- A $20 hitter and $20 pitcher have equal fantasy value
-- Players worth $1+ are above replacement level
+1. ONLY use player data from the context provided - these are REAL Razzball projections
+2. Reference specific players with their actual $ values from the data
+3. Use category breakdowns ($HR, $RBI, etc.) to explain WHY a player is valuable
+4. If a player has no projection data (no brackets), say projections are not available for that player
+5. Be concise but specific - always cite the numbers
 
 DISPLAYING TABLES:
 When users ask for comparisons, rankings, or team analysis, USE MARKDOWN TABLES like this:
@@ -221,7 +221,7 @@ Keep responses detailed but organized. Use tables and bullet points. Help users 
                 model=model_to_use,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=400,  # Reduced for faster responses
+                max_tokens=800,  # Allow detailed responses with projection data
             )
 
             # Extract response

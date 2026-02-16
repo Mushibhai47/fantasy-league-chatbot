@@ -119,31 +119,90 @@ async def chat(
         else:
             logger.info(f"✅ Using cached projections: {len(_projections_df)} players")
 
-        # Build fast lookup dictionary from cache
+        # Build fast lookup dictionaries from cache (by NFBCID, FantraxID, and name)
+        nfbc_lookup = {}  # NFBCID -> full projection data string
+        fantrax_lookup = {}  # FantraxID -> full projection data string
+        name_lookup = {}  # name -> full projection data string
+
         if _projections_df is not None:
             try:
                 import re
                 for _, row in _projections_df.iterrows():
-                    proj_name = str(row.get('Name', '')).lower()
-                    # Clean projection name (remove [player id=XXX] tags)
-                    proj_name = re.sub(r'\[player id=\d+\]|\[/player\]', '', proj_name).strip()
-                    dollar = row.get('$', row.get('dollar_value', ''))
-                    if dollar and str(dollar) != 'nan':
-                        dollar_lookup[proj_name] = f"${dollar}"
-                logger.info(f"💰 Dollar values ready: {len(dollar_lookup)} players")
+                    # Build a rich dollar value string with category breakdowns
+                    dollar_parts = []
+
+                    # Overall dollar value
+                    overall = row.get('$', row.get('dollar_value', ''))
+                    if overall and str(overall) not in ('nan', 'None', ''):
+                        dollar_parts.append(f"${overall}")
+
+                    # Category dollar values (hitter categories)
+                    for cat in ['$R$', '$HR$', '$RBI$', '$SB$', '$AVG$', '$OBP$']:
+                        val = row.get(cat, '')
+                        if val and str(val) not in ('nan', 'None', ''):
+                            cat_name = cat.replace('$', '')
+                            dollar_parts.append(f"${cat_name}:{val}")
+
+                    # Category dollar values (pitcher categories)
+                    for cat in ['$W$', '$SV$', '$K$', '$ERA$', '$WHIP$', '$QS$', '$HLD$']:
+                        val = row.get(cat, '')
+                        if val and str(val) not in ('nan', 'None', ''):
+                            cat_name = cat.replace('$', '')
+                            dollar_parts.append(f"${cat_name}:{val}")
+
+                    # Per-game value
+                    per_game = row.get('$/G$', '')
+                    if per_game and str(per_game) not in ('nan', 'None', ''):
+                        dollar_parts.append(f"$/G:{per_game}")
+
+                    dollar_str = ' '.join(dollar_parts) if dollar_parts else ''
+                    league_type = str(row.get('LeagueType', ''))
+
+                    if dollar_str:
+                        # Store by NFBCID (most reliable for NFBC CSVs)
+                        nfbc_id = row.get('NFBCID', '')
+                        if nfbc_id and str(nfbc_id) not in ('nan', 'None', ''):
+                            key = f"{str(nfbc_id)}_{league_type}" if league_type else str(nfbc_id)
+                            nfbc_lookup[str(nfbc_id)] = dollar_str
+
+                        # Store by FantraxID
+                        fantrax_id = row.get('FantraxID', '')
+                        if fantrax_id and str(fantrax_id) not in ('nan', 'None', ''):
+                            fantrax_lookup[str(fantrax_id)] = dollar_str
+
+                        # Store by name (fallback)
+                        proj_name = str(row.get('Name', '')).lower()
+                        proj_name = re.sub(r'\[player id=\d+\]|\[/player\]', '', proj_name).strip()
+                        if proj_name:
+                            name_lookup[proj_name] = dollar_str
+
+                logger.info(f"💰 Lookups ready: {len(nfbc_lookup)} NFBC, {len(fantrax_lookup)} Fantrax, {len(name_lookup)} by name")
             except Exception as e:
                 logger.warning(f"⚠️ Could not build dollar lookup: {e}")
 
-        def get_player_dollar_value(player_name: str) -> str:
-            """Get dollar value from pre-built lookup"""
+        def get_player_dollar_value(player_name: str, player_obj=None) -> str:
+            """Get dollar value using NFBCID/FantraxID first, then name fallback"""
+            # Try NFBCID first (most reliable for NFBC CSVs)
+            if player_obj and player_obj.nfbc_id:
+                val = nfbc_lookup.get(str(player_obj.nfbc_id), '')
+                if val:
+                    return f" [{val}]"
+
+            # Try FantraxID
+            if player_obj and player_obj.fantrax_id:
+                val = fantrax_lookup.get(str(player_obj.fantrax_id), '')
+                if val:
+                    return f" [{val}]"
+
+            # Fallback to name matching
             name_lower = player_name.lower().strip()
-            # Exact match first
-            if name_lower in dollar_lookup:
-                return f" {dollar_lookup[name_lower]}"
-            # Partial match (for names like "Juan Soto" matching "juan soto")
-            for proj_name, dollar in dollar_lookup.items():
+            if name_lower in name_lookup:
+                return f" [{name_lookup[name_lower]}]"
+
+            # Partial name match
+            for proj_name, dollar in name_lookup.items():
                 if name_lower in proj_name or proj_name in name_lower:
-                    return f" {dollar}"
+                    return f" [{dollar}]"
             return ""
 
         # Group players by team owner
@@ -153,7 +212,7 @@ async def chat(
         for roster in all_rosters:
             player = roster.player
             owner = roster.team_owner
-            dollar_val = get_player_dollar_value(player.name)
+            dollar_val = get_player_dollar_value(player.name, player)
 
             if owner == 'Free Agent':
                 if len(free_agents) < 20:
