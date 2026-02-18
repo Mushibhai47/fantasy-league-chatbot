@@ -120,25 +120,41 @@ async def chat(
             logger.info(f"✅ Using cached projections: {len(_projections_df)} players")
 
         # Build fast lookup dictionaries from cache (by NFBCID, FantraxID, and name)
-        # Filter by LeagueType - default MLB12
+        # Detect requested league type from user message, default MLB12
+        AVAILABLE_LEAGUE_TYPES = ["MLB12", "MLB15", "MLB10", "AL12", "NL12"]
         DEFAULT_LEAGUE_TYPE = "MLB12"
+
+        # Check if user requested a specific league type
+        import re
+        requested_type = DEFAULT_LEAGUE_TYPE
+        msg_upper = request.message.upper()
+        for lt in AVAILABLE_LEAGUE_TYPES:
+            if lt in msg_upper:
+                requested_type = lt
+                break
+
         nfbc_lookup = {}  # NFBCID -> full projection data string
         fantrax_lookup = {}  # FantraxID -> full projection data string
         name_lookup = {}  # name -> full projection data string
 
         if _projections_df is not None:
             try:
-                import re
-
-                # Filter to default league type first
+                # Filter to requested league type
                 filtered_df = _projections_df
                 if 'LeagueType' in _projections_df.columns:
-                    mlb12_df = _projections_df[_projections_df['LeagueType'] == DEFAULT_LEAGUE_TYPE]
-                    if len(mlb12_df) > 0:
-                        filtered_df = mlb12_df
-                        logger.info(f"📊 Filtered to {DEFAULT_LEAGUE_TYPE}: {len(filtered_df)} players")
+                    type_df = _projections_df[_projections_df['LeagueType'] == requested_type]
+                    if len(type_df) > 0:
+                        filtered_df = type_df
+                        logger.info(f"📊 Filtered to {requested_type}: {len(filtered_df)} players")
                     else:
-                        logger.info(f"⚠️ No {DEFAULT_LEAGUE_TYPE} data, using all league types")
+                        # Fallback to default if requested type not found
+                        mlb12_df = _projections_df[_projections_df['LeagueType'] == DEFAULT_LEAGUE_TYPE]
+                        if len(mlb12_df) > 0:
+                            filtered_df = mlb12_df
+                            requested_type = DEFAULT_LEAGUE_TYPE
+                            logger.info(f"⚠️ Requested type not found, fell back to {DEFAULT_LEAGUE_TYPE}: {len(filtered_df)} players")
+                        else:
+                            logger.info(f"⚠️ No league type data found, using all")
 
                 for _, row in filtered_df.iterrows():
                     # Determine if pitcher based on Pos
@@ -192,7 +208,7 @@ async def chat(
                         if proj_name:
                             name_lookup[proj_name] = dollar_str
 
-                logger.info(f"💰 Lookups ready ({DEFAULT_LEAGUE_TYPE}): {len(nfbc_lookup)} NFBC, {len(fantrax_lookup)} Fantrax, {len(name_lookup)} by name")
+                logger.info(f"💰 Lookups ready ({requested_type}): {len(nfbc_lookup)} NFBC, {len(fantrax_lookup)} Fantrax, {len(name_lookup)} by name")
             except Exception as e:
                 logger.warning(f"⚠️ Could not build dollar lookup: {e}")
 
@@ -256,8 +272,10 @@ async def chat(
         all_team_names = sorted(set(list(teams_hitters.keys()) + list(teams_pitchers.keys())))
 
         # Build clear context text for AI with hitter/pitcher separation
+        format_names = {"MLB12": "12-team mixed", "MLB15": "15-team mixed", "MLB10": "10-team mixed", "AL12": "12-team AL-only", "NL12": "12-team NL-only"}
         context_text = f"FANTASY LEAGUE DATA ({league.league_type}):\n"
-        context_text += f"PROJECTION FORMAT: {DEFAULT_LEAGUE_TYPE} (MLB 12-team mixed). Other formats available: MLB10, MLB15, AL12, NL12.\n"
+        context_text += f"ACTIVE PROJECTION FORMAT: {requested_type} ({format_names.get(requested_type, 'mixed')}).\n"
+        context_text += f"AVAILABLE FORMATS: {', '.join(AVAILABLE_LEAGUE_TYPES)}. User can request any format.\n"
         context_text += f"TEAMS IN LEAGUE: {', '.join(all_team_names)}\n\n"
 
         # List each team's roster with hitters and pitchers separated
