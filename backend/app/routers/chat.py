@@ -58,13 +58,13 @@ async def chat(
             limit_message = message
             logger.info(f"User {user_id}: {remaining} messages remaining")
 
-        # Get OWNED players first (most important for analysis)
+        # Get ALL owned players (no limit - need full rosters for accurate analysis)
         owned_rosters = db.query(Roster).options(
             joinedload(Roster.player)
         ).filter(
             Roster.league_id == request.league_id,
             Roster.team_owner != 'Free Agent'
-        ).limit(150).all()
+        ).all()
 
         # Fallback: try string comparison if no results
         if not owned_rosters:
@@ -74,7 +74,7 @@ async def chat(
             ).filter(
                 Roster.league_id == str(request.league_id),
                 Roster.team_owner != 'Free Agent'
-            ).limit(150).all()
+            ).all()
 
         # Get FREE AGENTS separately (limit to 30)
         fa_rosters = db.query(Roster).options(
@@ -120,6 +120,8 @@ async def chat(
             logger.info(f"✅ Using cached projections: {len(_projections_df)} players")
 
         # Build fast lookup dictionaries from cache (by NFBCID, FantraxID, and name)
+        # Filter by LeagueType - default MLB12
+        DEFAULT_LEAGUE_TYPE = "MLB12"
         nfbc_lookup = {}  # NFBCID -> full projection data string
         fantrax_lookup = {}  # FantraxID -> full projection data string
         name_lookup = {}  # name -> full projection data string
@@ -127,7 +129,22 @@ async def chat(
         if _projections_df is not None:
             try:
                 import re
-                for _, row in _projections_df.iterrows():
+
+                # Filter to default league type first
+                filtered_df = _projections_df
+                if 'LeagueType' in _projections_df.columns:
+                    mlb12_df = _projections_df[_projections_df['LeagueType'] == DEFAULT_LEAGUE_TYPE]
+                    if len(mlb12_df) > 0:
+                        filtered_df = mlb12_df
+                        logger.info(f"📊 Filtered to {DEFAULT_LEAGUE_TYPE}: {len(filtered_df)} players")
+                    else:
+                        logger.info(f"⚠️ No {DEFAULT_LEAGUE_TYPE} data, using all league types")
+
+                for _, row in filtered_df.iterrows():
+                    # Determine if pitcher based on Pos
+                    pos = str(row.get('Pos', '')).upper()
+                    is_pitcher = pos in ('SP', 'RP', 'P')
+
                     # Build a rich dollar value string with category breakdowns
                     dollar_parts = []
 
@@ -136,33 +153,32 @@ async def chat(
                     if overall and str(overall) not in ('nan', 'None', ''):
                         dollar_parts.append(f"${overall}")
 
-                    # Category dollar values (hitter categories)
-                    for cat in ['$R$', '$HR$', '$RBI$', '$SB$', '$AVG$', '$OBP$']:
-                        val = row.get(cat, '')
-                        if val and str(val) not in ('nan', 'None', ''):
-                            cat_name = cat.replace('$', '')
-                            dollar_parts.append(f"${cat_name}:{val}")
-
-                    # Category dollar values (pitcher categories)
-                    for cat in ['$W$', '$SV$', '$K$', '$ERA$', '$WHIP$', '$QS$', '$HLD$']:
-                        val = row.get(cat, '')
-                        if val and str(val) not in ('nan', 'None', ''):
-                            cat_name = cat.replace('$', '')
-                            dollar_parts.append(f"${cat_name}:{val}")
-
                     # Per-game value
                     per_game = row.get('$/G$', '')
                     if per_game and str(per_game) not in ('nan', 'None', ''):
                         dollar_parts.append(f"$/G:{per_game}")
 
+                    if is_pitcher:
+                        # Pitcher categories ONLY
+                        for cat in ['$W$', '$SV$', '$K$', '$ERA$', '$WHIP$', '$QS$', '$HLD$']:
+                            val = row.get(cat, '')
+                            if val and str(val) not in ('nan', 'None', ''):
+                                cat_name = cat.replace('$', '')
+                                dollar_parts.append(f"${cat_name}:{val}")
+                    else:
+                        # Hitter categories ONLY
+                        for cat in ['$R$', '$HR$', '$RBI$', '$SB$', '$AVG$', '$OBP$']:
+                            val = row.get(cat, '')
+                            if val and str(val) not in ('nan', 'None', ''):
+                                cat_name = cat.replace('$', '')
+                                dollar_parts.append(f"${cat_name}:{val}")
+
                     dollar_str = ' '.join(dollar_parts) if dollar_parts else ''
-                    league_type = str(row.get('LeagueType', ''))
 
                     if dollar_str:
                         # Store by NFBCID (most reliable for NFBC CSVs)
                         nfbc_id = row.get('NFBCID', '')
                         if nfbc_id and str(nfbc_id) not in ('nan', 'None', ''):
-                            key = f"{str(nfbc_id)}_{league_type}" if league_type else str(nfbc_id)
                             nfbc_lookup[str(nfbc_id)] = dollar_str
 
                         # Store by FantraxID
@@ -176,7 +192,7 @@ async def chat(
                         if proj_name:
                             name_lookup[proj_name] = dollar_str
 
-                logger.info(f"💰 Lookups ready: {len(nfbc_lookup)} NFBC, {len(fantrax_lookup)} Fantrax, {len(name_lookup)} by name")
+                logger.info(f"💰 Lookups ready ({DEFAULT_LEAGUE_TYPE}): {len(nfbc_lookup)} NFBC, {len(fantrax_lookup)} Fantrax, {len(name_lookup)} by name")
             except Exception as e:
                 logger.warning(f"⚠️ Could not build dollar lookup: {e}")
 
@@ -228,15 +244,16 @@ async def chat(
         # Build clear context text for AI
         team_names = list(teams.keys())
         context_text = f"FANTASY LEAGUE DATA ({league.league_type}):\n"
+        context_text += f"PROJECTION FORMAT: {DEFAULT_LEAGUE_TYPE} (MLB 12-team mixed). Other formats available: MLB10, MLB15, AL12, NL12.\n"
         context_text += f"TEAMS IN LEAGUE: {', '.join(team_names)}\n\n"
 
-        # List each team's roster
+        # List each team's roster (show all players, up to 30 per team)
         for team_name, players in teams.items():
             context_text += f"TEAM '{team_name}' ROSTER ({len(players)} players):\n"
-            for p in players[:12]:  # Limit players per team
+            for p in players[:30]:
                 context_text += f"  - {p}\n"
-            if len(players) > 12:
-                context_text += f"  ... and {len(players) - 12} more players\n"
+            if len(players) > 30:
+                context_text += f"  ... and {len(players) - 30} more players\n"
             context_text += "\n"
 
         # List free agents or note if none

@@ -52,11 +52,19 @@ CRITICAL RULES:
 4. If a player has no projection data (no brackets), say projections are not available for that player
 5. Be concise but specific - always cite the numbers
 
+IMPORTANT - SEPARATE HITTERS AND PITCHERS:
+Always show hitters and pitchers in SEPARATE tables. Pitchers are Pos = SP, RP, or P.
+- HITTER table columns: Player | Pos | Team | $ | $R | $HR | $RBI | $SB | $AVG
+- PITCHER table columns: Player | Pos | Team | $ | $W | $SV | $K | $ERA | $WHIP
+Never show $HR/$RBI for pitchers or $W/$SV/$K for hitters.
+
+PROJECTION FORMAT:
+Data uses MLB12 (12-team mixed) by default. If the user asks about a different format, mention that other formats are available (MLB10, MLB15, AL12, NL12).
+
 DISPLAYING TABLES:
-When users ask for comparisons, rankings, or team analysis, USE MARKDOWN TABLES like this:
-| Player | Pos | $ | $HR | $RBI | $R | $SB | $AVG |
-|--------|-----|---|-----|------|----|----|------|
-| Juan Soto | OF | $35.2 | $8.1 | $7.2 | $6.5 | $1.2 | $12.2 |
+| Player | Pos | Team | $ | $HR | $RBI | $R | $SB | $AVG |
+|--------|-----|------|---|-----|------|----|----|------|
+| Juan Soto | OF | NYY | $35.2 | $8.1 | $7.2 | $6.5 | $1.2 | $12.2 |
 
 For team comparisons (when you receive LEAGUE ROSTER DATA):
 1. Group players by team
