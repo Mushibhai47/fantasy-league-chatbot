@@ -229,7 +229,7 @@ Keep responses detailed but organized. Use tables and bullet points. Help users 
                 model=model_to_use,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=800,  # Allow detailed responses with projection data
+                max_tokens=2500,  # Large enough for full roster tables + analysis
             )
 
             # Extract response
