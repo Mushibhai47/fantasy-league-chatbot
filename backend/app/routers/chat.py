@@ -221,9 +221,11 @@ async def chat(
                     return f" [{dollar}]"
             return ""
 
-        # Group players by team owner
-        teams = {}
+        # Group players by team owner, separating hitters and pitchers
+        teams_hitters = {}
+        teams_pitchers = {}
         free_agents = []
+        PITCHER_POSITIONS = ('SP', 'RP', 'P')
 
         for roster in all_rosters:
             player = roster.player
@@ -232,28 +234,49 @@ async def chat(
             if owner and owner.startswith('@'):
                 owner = owner[1:]
             dollar_val = get_player_dollar_value(player.name, player)
+            pos = (player.position or '').upper()
+            is_pitcher = pos in PITCHER_POSITIONS
+
+            player_str = f"{player.name} ({player.position}, {player.team}){dollar_val}"
 
             if owner == 'Free Agent':
                 if len(free_agents) < 20:
-                    free_agents.append(f"{player.name} ({player.position}, {player.team}){dollar_val}")
+                    free_agents.append(player_str)
             else:
-                if owner not in teams:
-                    teams[owner] = []
-                teams[owner].append(f"{player.name} ({player.position}, {player.team}){dollar_val}")
+                if is_pitcher:
+                    if owner not in teams_pitchers:
+                        teams_pitchers[owner] = []
+                    teams_pitchers[owner].append(player_str)
+                else:
+                    if owner not in teams_hitters:
+                        teams_hitters[owner] = []
+                    teams_hitters[owner].append(player_str)
 
-        # Build clear context text for AI
-        team_names = list(teams.keys())
+        # All team names
+        all_team_names = sorted(set(list(teams_hitters.keys()) + list(teams_pitchers.keys())))
+
+        # Build clear context text for AI with hitter/pitcher separation
         context_text = f"FANTASY LEAGUE DATA ({league.league_type}):\n"
         context_text += f"PROJECTION FORMAT: {DEFAULT_LEAGUE_TYPE} (MLB 12-team mixed). Other formats available: MLB10, MLB15, AL12, NL12.\n"
-        context_text += f"TEAMS IN LEAGUE: {', '.join(team_names)}\n\n"
+        context_text += f"TEAMS IN LEAGUE: {', '.join(all_team_names)}\n\n"
 
-        # List each team's roster (show all players, up to 30 per team)
-        for team_name, players in teams.items():
-            context_text += f"TEAM '{team_name}' ROSTER ({len(players)} players):\n"
-            for p in players[:30]:
-                context_text += f"  - {p}\n"
-            if len(players) > 30:
-                context_text += f"  ... and {len(players) - 30} more players\n"
+        # List each team's roster with hitters and pitchers separated
+        for team_name in all_team_names:
+            hitters = teams_hitters.get(team_name, [])
+            pitchers = teams_pitchers.get(team_name, [])
+            total = len(hitters) + len(pitchers)
+            context_text += f"TEAM '{team_name}' ROSTER ({total} players):\n"
+
+            if hitters:
+                context_text += f"  HITTERS ({len(hitters)}):\n"
+                for p in hitters[:50]:
+                    context_text += f"    - {p}\n"
+
+            if pitchers:
+                context_text += f"  PITCHERS ({len(pitchers)}):\n"
+                for p in pitchers[:50]:
+                    context_text += f"    - {p}\n"
+
             context_text += "\n"
 
         # List free agents or note if none
@@ -264,15 +287,15 @@ async def chat(
         else:
             context_text += "NOTE: No free agents in this data (CSV only contains owned players)\n"
 
-        logger.info(f"Context built: {len(teams)} teams, {len(free_agents)} free agents shown")
+        logger.info(f"Context built: {len(all_team_names)} teams, {len(free_agents)} free agents shown")
 
         # Build context for OpenAI (use simple format it can understand)
         context_data = {
             'league_context': context_text,
             'league_info': {
                 'league_type': league.league_type,
-                'total_teams': len(teams),
-                'team_names': list(teams.keys())
+                'total_teams': len(all_team_names),
+                'team_names': all_team_names
             }
         }
 
