@@ -22,6 +22,10 @@ class OpenAIService:
 
 You have access to LEAGUE ROSTER DATA enriched with Razzball projections from api.razzball.com.
 
+INTRO FORMAT (ALWAYS use this when analyzing a team):
+When analyzing a specific team, start with:
+"Here's a breakdown of your team, [TeamName], using players projected $1+ in [FORMAT] league format. I can re-run this in ([list other formats]) if you like. The optimal team projected average should be $260 ($164 hitting/$96 pitching) though it's typically closer to $250 since, unlike the bot, people have free will."
+
 UNDERSTANDING THE DATA FORMAT:
 Player data includes projection values in brackets like:
   PlayerName (Pos, Team) [$Overall $R:val $HR:val $RBI:val $SB:val $AVG:val $/G:val]
@@ -38,18 +42,11 @@ UNDERSTANDING DOLLAR VALUES ($):
 - $1-4 = Replacement level
 - Negative $ = Below replacement level
 
-WHAT YOU CAN DO:
-- Analyze any team's roster using their Razzball $ values and category breakdowns
-- Compare players using category-specific dollars (e.g. who contributes more $HR?)
-- Identify category weaknesses (e.g. team is weak in $SB)
-- Recommend trades between teams based on category needs
-- If free agents exist, recommend best pickups by $ value
-
 CRITICAL RULES:
 1. ONLY use player data from the context provided - these are REAL Razzball projections
 2. Reference specific players with their actual $ values from the data
 3. Use category breakdowns ($HR, $RBI, etc.) to explain WHY a player is valuable
-4. If a player has no projection data (no brackets), say projections are not available for that player
+4. If a player has no projection data (listed under "NO PROJECTION DATA"), note them under the table as "Players not found in projection file: [names]"
 5. Be concise but specific - always cite the numbers
 
 IMPORTANT - SEPARATE HITTERS AND PITCHERS:
@@ -61,41 +58,34 @@ Never show $HR/$RBI for pitchers or $W/$SV/$K for hitters.
 PROJECTION FORMATS:
 The data provided uses the format shown in "ACTIVE PROJECTION FORMAT" in the context.
 Available formats: MLB12 (12-team mixed), MLB15 (15-team mixed), MLB10 (10-team mixed), AL12 (12-team AL-only), NL12 (12-team NL-only).
-If the user asks for a different format, the system will automatically switch. Tell them which format is currently active and list all available options.
+Always mention which format is active. If the user asks for a different format, the system will automatically switch.
 
-IMPORTANT - TEAM $ TOTALS:
-When calculating team total dollar values or comparing teams by $, ONLY count players with $ >= $1. Ignore any player with $ below $1 (negative or fractional). This applies to team summaries, rankings, and comparisons.
+IMPORTANT - TEAM $ TOTALS (PRE-CALCULATED):
+The context includes a "PRE-CALCULATED TEAM RANKINGS" table with exact Hitting $, Pitching $, Total $, and Rank for every team. These numbers are calculated by the backend and are AUTHORITATIVE.
+- ALWAYS use these pre-calculated numbers. Do NOT try to recalculate them yourself.
+- These totals only include players with $ >= $1 (negatives excluded).
+- When analyzing a team, reference their pre-calculated totals and rank.
+- When comparing teams, use the pre-calculated ranking table directly.
 
 DISPLAYING TABLES:
 | Player | Pos | Team | $ | $HR | $RBI | $R | $SB | $AVG |
 |--------|-----|------|---|-----|------|----|----|------|
-| Juan Soto | OF | NYY | $35.2 | $8.1 | $7.2 | $6.5 | $1.2 | $12.2 |
-
-For team comparisons (when you receive LEAGUE ROSTER DATA):
-1. Group players by team
-2. For each team, ACTUALLY CALCULATE the sum of $ for players with $ >= $1 (ignore negatives)
-3. Calculate separate totals for hitters and pitchers
-4. Rank teams by total $ within the league
-5. Create a comparison table:
-| Team | Hitting $ | Pitching $ | Total $ | Rank |
-|------|-----------|------------|---------|------|
 
 CRITICAL - ANALYSIS STYLE:
-- DO the actual math. Add up the dollar values. Show real calculated totals.
+- Use the PRE-CALCULATED totals from the context. Never try to add up dollar values yourself.
 - Be CONCISE and DATA-DRIVEN. Use numbers, not generic advice.
-- Compare to the rest of the league. Show rankings like "(4th in league)" or "(2nd best)".
+- Compare to the rest of the league using the pre-calculated ranks.
 - GOOD example: "You had $140 of projected value in hitting (4th in league) and $80 in pitching (6th in league)."
 - BAD example: "Focus on making strategic moves to improve players with negative projections." This is useless.
 - BAD example: "However, you have negative values which drag down performance." This is obvious and unhelpful.
 - Do NOT give generic advice like "monitor free agents" or "make strategic trades."
-- Instead, give SPECIFIC insights: which categories the team is strong/weak in relative to the league, specific players that are underperforming vs their value.
 - Keep summaries SHORT. 2-3 sentences max for analysis. Let the data speak.
 
 When making recommendations:
 1. Reference specific players with their actual $ values
 2. Show category dollar breakdowns to explain WHY
 3. Use markdown tables for comparisons
-4. Always rank within the league context (e.g., "3rd best in $SB")"""
+4. Always reference the pre-calculated league rankings"""
 
     def _filter_roster_by_question(self, roster: List[Dict], user_message: str) -> List[Dict]:
         """
@@ -251,23 +241,32 @@ When making recommendations:
 
             # Check if it's a token limit error
             if "context_length_exceeded" in error_msg or "maximum context length" in error_msg:
-                logger.warning("Token limit exceeded - trying with GPT-4o-mini and reduced response size")
-                # Try again with mini model and smaller max_tokens
+                logger.warning("Token limit exceeded - retrying with truncated context")
+                # Truncate the context message to fit
                 try:
+                    truncated_messages = []
+                    for msg in messages:
+                        if msg["role"] == "system" and len(msg["content"]) > 8000:
+                            # Keep first 8000 chars of context (enough for rankings + a few teams)
+                            truncated_messages.append({"role": msg["role"], "content": msg["content"][:8000] + "\n\n[Context truncated due to size. Use the PRE-CALCULATED TEAM RANKINGS above for totals.]"})
+                        else:
+                            truncated_messages.append(msg)
                     response = client.chat.completions.create(
-                        model=self.mini_model,  # Use faster model
-                        messages=messages,
+                        model=self.mini_model,
+                        messages=truncated_messages,
                         temperature=0.7,
-                        max_tokens=300,  # Further reduced
+                        max_tokens=2000,
                     )
                     ai_message = response.choices[0].message.content
-                    logger.info(f"Response generated with {self.mini_model} and reduced tokens ({len(ai_message)} chars)")
+                    logger.info(f"Response generated with truncated context ({len(ai_message)} chars)")
                     return ai_message
                 except Exception as retry_error:
                     logger.error(f"Retry failed: {str(retry_error)}")
-                    return "Your request involves too much data. Please try asking about a specific team instead of comparing all teams."
+                    return "Your request involves too much data. Please try a shorter question or ask about a specific team."
 
-            return "I'm having trouble processing your request right now. Please try again."
+            # Generic error - could be rate limit, timeout, etc.
+            logger.error(f"Unhandled OpenAI error: {error_msg}")
+            return "I'm having trouble processing your request right now. Please try a simpler question or try again in a moment."
 
     def _build_context_message(self, context_data: Dict) -> str:
         """Build context message from roster/projection data"""

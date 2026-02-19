@@ -238,8 +238,12 @@ async def chat(
             return ""
 
         # Group players by team owner, separating hitters and pitchers
-        teams_hitters = {}
-        teams_pitchers = {}
+        # Also track dollar values for pre-calculated totals
+        teams_hitters = {}  # owner -> list of player strings
+        teams_pitchers = {}  # owner -> list of player strings
+        teams_hitter_dollars = {}  # owner -> list of float $ values (for $1+ sum)
+        teams_pitcher_dollars = {}  # owner -> list of float $ values (for $1+ sum)
+        teams_no_projection = {}  # owner -> list of player names with no projection
         free_agents = []
         PITCHER_POSITIONS = ('SP', 'RP', 'P')
 
@@ -259,31 +263,86 @@ async def chat(
                 if len(free_agents) < 20:
                     free_agents.append(player_str)
             else:
+                # Extract numeric $ value for pre-calculation
+                numeric_dollar = None
+                if dollar_val:
+                    # dollar_val looks like " [$12.3 $/G:0.5 $R:1.2 ...]"
+                    import re as _re
+                    dollar_match = _re.search(r'\[\$(-?[\d.]+)', dollar_val)
+                    if dollar_match:
+                        try:
+                            numeric_dollar = float(dollar_match.group(1))
+                        except ValueError:
+                            pass
+
                 if is_pitcher:
                     if owner not in teams_pitchers:
                         teams_pitchers[owner] = []
+                        teams_pitcher_dollars[owner] = []
                     teams_pitchers[owner].append(player_str)
+                    if numeric_dollar is not None:
+                        teams_pitcher_dollars[owner].append(numeric_dollar)
+                    else:
+                        if owner not in teams_no_projection:
+                            teams_no_projection[owner] = []
+                        teams_no_projection[owner].append(f"{player.name} ({player.position})")
                 else:
                     if owner not in teams_hitters:
                         teams_hitters[owner] = []
+                        teams_hitter_dollars[owner] = []
                     teams_hitters[owner].append(player_str)
+                    if numeric_dollar is not None:
+                        teams_hitter_dollars[owner].append(numeric_dollar)
+                    else:
+                        if owner not in teams_no_projection:
+                            teams_no_projection[owner] = []
+                        teams_no_projection[owner].append(f"{player.name} ({player.position})")
 
         # All team names
         all_team_names = sorted(set(list(teams_hitters.keys()) + list(teams_pitchers.keys())))
 
+        # Pre-calculate team totals ($1+ only)
+        team_totals = {}
+        for team_name in all_team_names:
+            h_dollars = teams_hitter_dollars.get(team_name, [])
+            p_dollars = teams_pitcher_dollars.get(team_name, [])
+            h_sum = sum(d for d in h_dollars if d >= 1.0)
+            p_sum = sum(d for d in p_dollars if d >= 1.0)
+            team_totals[team_name] = {
+                'hitting': round(h_sum, 1),
+                'pitching': round(p_sum, 1),
+                'total': round(h_sum + p_sum, 1)
+            }
+
+        # Sort teams by total $ for ranking
+        ranked_teams = sorted(all_team_names, key=lambda t: team_totals[t]['total'], reverse=True)
+        for rank, team_name in enumerate(ranked_teams, 1):
+            team_totals[team_name]['rank'] = rank
+
         # Build clear context text for AI with hitter/pitcher separation
         format_names = {"MLB12": "12-team mixed", "MLB15": "15-team mixed", "MLB10": "10-team mixed", "AL12": "12-team AL-only", "NL12": "12-team NL-only"}
+        all_formats_str = ", ".join(AVAILABLE_LEAGUE_TYPES)
         context_text = f"FANTASY LEAGUE DATA ({league.league_type}):\n"
         context_text += f"ACTIVE PROJECTION FORMAT: {requested_type} ({format_names.get(requested_type, 'mixed')}).\n"
-        context_text += f"AVAILABLE FORMATS: {', '.join(AVAILABLE_LEAGUE_TYPES)}. User can request any format.\n"
+        context_text += f"AVAILABLE FORMATS: {all_formats_str}. User can request any format.\n"
         context_text += f"TEAMS IN LEAGUE: {', '.join(all_team_names)}\n\n"
+
+        # Pre-calculated team rankings table
+        context_text += "PRE-CALCULATED TEAM RANKINGS ($1+ players only):\n"
+        context_text += "Team | Hitting $ | Pitching $ | Total $ | Rank\n"
+        for team_name in ranked_teams:
+            t = team_totals[team_name]
+            context_text += f"{team_name} | ${t['hitting']} | ${t['pitching']} | ${t['total']} | {t['rank']}\n"
+        context_text += "\n"
 
         # List each team's roster with hitters and pitchers separated
         for team_name in all_team_names:
             hitters = teams_hitters.get(team_name, [])
             pitchers = teams_pitchers.get(team_name, [])
+            no_proj = teams_no_projection.get(team_name, [])
             total = len(hitters) + len(pitchers)
-            context_text += f"TEAM '{team_name}' ROSTER ({total} players):\n"
+            t = team_totals[team_name]
+            context_text += f"TEAM '{team_name}' ROSTER ({total} players) [Hitting: ${t['hitting']} | Pitching: ${t['pitching']} | Total: ${t['total']} | Rank: {t['rank']}]:\n"
 
             if hitters:
                 context_text += f"  HITTERS ({len(hitters)}):\n"
@@ -295,6 +354,9 @@ async def chat(
                 for p in pitchers[:50]:
                     context_text += f"    - {p}\n"
 
+            if no_proj:
+                context_text += f"  NO PROJECTION DATA: {', '.join(no_proj)}\n"
+
             context_text += "\n"
 
         # List free agents or note if none
@@ -305,7 +367,9 @@ async def chat(
         else:
             context_text += "NOTE: No free agents in this data (CSV only contains owned players)\n"
 
-        logger.info(f"Context built: {len(all_team_names)} teams, {len(free_agents)} free agents shown")
+        context_chars = len(context_text)
+        est_tokens = context_chars // 4
+        logger.info(f"Context built: {len(all_team_names)} teams, {len(free_agents)} free agents, ~{est_tokens} tokens ({context_chars} chars)")
 
         # Build context for OpenAI (use simple format it can understand)
         context_data = {
