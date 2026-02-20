@@ -238,14 +238,43 @@ async def chat(
             return ""
 
         # Group players by team owner, separating hitters and pitchers
-        # Also track dollar values for pre-calculated totals
+        # Also track dollar values and category $ for pre-calculated totals
         teams_hitters = {}  # owner -> list of player strings
         teams_pitchers = {}  # owner -> list of player strings
-        teams_hitter_dollars = {}  # owner -> list of float $ values (for $1+ sum)
-        teams_pitcher_dollars = {}  # owner -> list of float $ values (for $1+ sum)
         teams_no_projection = {}  # owner -> list of player names with no projection
+        # Per-team category tracking: owner -> {category -> list of values}
+        HITTER_CATS = ['R', 'HR', 'RBI', 'SB', 'AVG']
+        PITCHER_CATS = ['W', 'SV', 'K', 'ERA', 'WHIP']
+        ALL_CATS = HITTER_CATS + PITCHER_CATS
+        teams_cat_dollars = {}  # owner -> {'$': [], 'R': [], 'HR': [], ...}
         free_agents = []
         PITCHER_POSITIONS = ('SP', 'RP', 'P')
+
+        import re as _re
+
+        def parse_dollar_categories(dollar_val_str):
+            """Parse dollar value string to extract overall $ and category $"""
+            result = {'$': None}
+            for cat in ALL_CATS:
+                result[cat] = None
+            if not dollar_val_str:
+                return result
+            # Extract overall $ value: "[$12.3 ..."
+            overall_match = _re.search(r'\[\$(-?[\d.]+)', dollar_val_str)
+            if overall_match:
+                try:
+                    result['$'] = float(overall_match.group(1))
+                except ValueError:
+                    pass
+            # Extract category values: "$R:1.2", "$HR:-0.5", etc.
+            for cat in ALL_CATS:
+                cat_match = _re.search(rf'\${cat}:(-?[\d.]+)', dollar_val_str)
+                if cat_match:
+                    try:
+                        result[cat] = float(cat_match.group(1))
+                    except ValueError:
+                        pass
+            return result
 
         for roster in all_rosters:
             player = roster.player
@@ -263,25 +292,27 @@ async def chat(
                 if len(free_agents) < 20:
                     free_agents.append(player_str)
             else:
-                # Extract numeric $ value for pre-calculation
-                numeric_dollar = None
-                if dollar_val:
-                    # dollar_val looks like " [$12.3 $/G:0.5 $R:1.2 ...]"
-                    import re as _re
-                    dollar_match = _re.search(r'\[\$(-?[\d.]+)', dollar_val)
-                    if dollar_match:
-                        try:
-                            numeric_dollar = float(dollar_match.group(1))
-                        except ValueError:
-                            pass
+                # Parse all dollar categories
+                parsed = parse_dollar_categories(dollar_val)
+                numeric_dollar = parsed['$']
+
+                # Initialize team tracking if needed
+                if owner not in teams_cat_dollars:
+                    teams_cat_dollars[owner] = {'h_$': [], 'p_$': []}
+                    for cat in ALL_CATS:
+                        teams_cat_dollars[owner][cat] = []
 
                 if is_pitcher:
                     if owner not in teams_pitchers:
                         teams_pitchers[owner] = []
-                        teams_pitcher_dollars[owner] = []
                     teams_pitchers[owner].append(player_str)
                     if numeric_dollar is not None:
-                        teams_pitcher_dollars[owner].append(numeric_dollar)
+                        teams_cat_dollars[owner]['p_$'].append(numeric_dollar)
+                        # Only sum categories for $1+ players
+                        if numeric_dollar >= 1.0:
+                            for cat in PITCHER_CATS:
+                                if parsed[cat] is not None:
+                                    teams_cat_dollars[owner][cat].append(parsed[cat])
                     else:
                         if owner not in teams_no_projection:
                             teams_no_projection[owner] = []
@@ -289,10 +320,14 @@ async def chat(
                 else:
                     if owner not in teams_hitters:
                         teams_hitters[owner] = []
-                        teams_hitter_dollars[owner] = []
                     teams_hitters[owner].append(player_str)
                     if numeric_dollar is not None:
-                        teams_hitter_dollars[owner].append(numeric_dollar)
+                        teams_cat_dollars[owner]['h_$'].append(numeric_dollar)
+                        # Only sum categories for $1+ players
+                        if numeric_dollar >= 1.0:
+                            for cat in HITTER_CATS:
+                                if parsed[cat] is not None:
+                                    teams_cat_dollars[owner][cat].append(parsed[cat])
                     else:
                         if owner not in teams_no_projection:
                             teams_no_projection[owner] = []
@@ -301,18 +336,25 @@ async def chat(
         # All team names
         all_team_names = sorted(set(list(teams_hitters.keys()) + list(teams_pitchers.keys())))
 
-        # Pre-calculate team totals ($1+ only)
+        # Pre-calculate team totals ($1+ only) with category breakdowns
         team_totals = {}
         for team_name in all_team_names:
-            h_dollars = teams_hitter_dollars.get(team_name, [])
-            p_dollars = teams_pitcher_dollars.get(team_name, [])
+            cd = teams_cat_dollars.get(team_name, {})
+            h_dollars = cd.get('h_$', [])
+            p_dollars = cd.get('p_$', [])
             h_sum = sum(d for d in h_dollars if d >= 1.0)
             p_sum = sum(d for d in p_dollars if d >= 1.0)
-            team_totals[team_name] = {
+            totals = {
                 'hitting': round(h_sum, 1),
                 'pitching': round(p_sum, 1),
-                'total': round(h_sum + p_sum, 1)
+                'total': round(h_sum + p_sum, 1),
+                'count': len(h_dollars) + len(p_dollars),
             }
+            # Sum each category ($1+ players only - already filtered during collection)
+            for cat in ALL_CATS:
+                cat_vals = cd.get(cat, [])
+                totals[cat] = round(sum(cat_vals), 1)
+            team_totals[team_name] = totals
 
         # Sort teams by total $ for ranking
         ranked_teams = sorted(all_team_names, key=lambda t: team_totals[t]['total'], reverse=True)
@@ -327,12 +369,16 @@ async def chat(
         context_text += f"AVAILABLE FORMATS: {all_formats_str}. User can request any format.\n"
         context_text += f"TEAMS IN LEAGUE: {', '.join(all_team_names)}\n\n"
 
-        # Pre-calculated team rankings table
+        # Pre-calculated team rankings table with category breakdowns
         context_text += "PRE-CALCULATED TEAM RANKINGS ($1+ players only):\n"
-        context_text += "Team | Hitting $ | Pitching $ | Total $ | Rank\n"
+        context_text += "Team | Total $ | Hitting $ | Pitching $ | $R | $HR | $RBI | $SB | $AVG | $W | $SV | $ERA | $WHIP | $K | Rank\n"
         for team_name in ranked_teams:
             t = team_totals[team_name]
-            context_text += f"{team_name} | ${t['hitting']} | ${t['pitching']} | ${t['total']} | {t['rank']}\n"
+            context_text += (
+                f"{team_name} | ${t['total']} | ${t['hitting']} | ${t['pitching']} | "
+                f"${t['R']} | ${t['HR']} | ${t['RBI']} | ${t['SB']} | ${t['AVG']} | "
+                f"${t['W']} | ${t['SV']} | ${t['ERA']} | ${t['WHIP']} | ${t['K']} | {t['rank']}\n"
+            )
         context_text += "\n"
 
         # List each team's roster with hitters and pitchers separated
