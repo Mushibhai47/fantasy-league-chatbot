@@ -286,7 +286,14 @@ async def chat(
             pos = (player.position or '').upper()
             is_pitcher = pos in PITCHER_POSITIONS
 
-            player_str = f"{player.name} ({player.position}, {player.team}){dollar_val}"
+            # Build clear, standalone player string to prevent GPT from mixing up values
+            # Format: "Name | Pos: SP | Team: NYY | $: 12.3 | $W: 2.1 | $K: 5.2 | ..."
+            if dollar_val:
+                # dollar_val is like " [$12.3 $R:1.2 $HR:3.4 ...]" - reformat to pipe-separated
+                clean_dollar = dollar_val.strip().strip('[]')
+                player_str = f"{player.name} | Pos: {player.position} | Team: {player.team} | {clean_dollar}"
+            else:
+                player_str = f"{player.name} | Pos: {player.position} | Team: {player.team} | NO PROJECTION"
 
             if owner == 'Free Agent':
                 if len(free_agents) < 20:
@@ -417,6 +424,7 @@ async def chat(
             logger.info(f"General query - sending top 3 teams: {teams_to_show}")
 
         # List selected team rosters with hitters and pitchers separated
+        # USE STANDALONE FORMAT: each player on its own clearly labeled line to prevent GPT mixing up values
         if teams_to_show:
             for team_name in teams_to_show:
                 hitters = teams_hitters.get(team_name, [])
@@ -429,12 +437,12 @@ async def chat(
                 if hitters:
                     context_text += f"  HITTERS ({len(hitters)}):\n"
                     for p in hitters[:50]:
-                        context_text += f"    - {p}\n"
+                        context_text += f"    PLAYER: {p}\n"
 
                 if pitchers:
                     context_text += f"  PITCHERS ({len(pitchers)}):\n"
                     for p in pitchers[:50]:
-                        context_text += f"    - {p}\n"
+                        context_text += f"    PLAYER: {p}\n"
 
                 if no_proj:
                     context_text += f"  NO PROJECTION DATA: {', '.join(no_proj)}\n"

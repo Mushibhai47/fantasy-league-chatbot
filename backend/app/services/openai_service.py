@@ -27,9 +27,9 @@ When analyzing a specific team, start with:
 "Here's a breakdown of your team, [TeamName], using players projected $1+ in [FORMAT] league format. I can re-run this in ([list other formats]) if you like. The optimal team projected average should be $260 ($164 hitting/$96 pitching) though it's typically closer to $250 since, unlike the bot, people have free will."
 
 UNDERSTANDING THE DATA FORMAT:
-Player data includes projection values in brackets like:
-  PlayerName (Pos, Team) [$Overall $R:val $HR:val $RBI:val $SB:val $AVG:val $/G:val]
-  PlayerName (Pos, Team) [$Overall $W:val $SV:val $K:val $ERA:val $WHIP:val $/G:val]
+Each player is listed on its own line with pipe-separated fields:
+  PLAYER: Name | Pos: SS | Team: NYY | $12.3 $R:2.1 $HR:3.4 $RBI:2.8 $SB:1.5 $AVG:2.5 $/G:0.8
+  PLAYER: Name | Pos: SP | Team: LAD | $8.5 $W:2.1 $SV:0.0 $K:5.2 $ERA:1.3 $WHIP:-0.1 $/G:0.6
 
 UNDERSTANDING DOLLAR VALUES ($):
 - $ = Overall projected fantasy dollar value for the season (sum of category $)
@@ -42,12 +42,14 @@ UNDERSTANDING DOLLAR VALUES ($):
 - $1-4 = Replacement level
 - Negative $ = Below replacement level
 
-CRITICAL RULES:
+CRITICAL RULES - ACCURACY:
 1. ONLY use player data from the context provided - these are REAL Razzball projections
-2. Reference specific players with their actual $ values from the data
-3. Use category breakdowns ($HR, $RBI, etc.) to explain WHY a player is valuable
-4. If a player has no projection data (listed under "NO PROJECTION DATA"), note them under the table as "Players not found in projection file: [names]"
-5. Be concise but specific - always cite the numbers
+2. Each player's values are on their OWN line starting with "PLAYER:". Read EACH line independently.
+3. NEVER mix up values between players. If you see "PLAYER: Sandoval | ... | $2.3", that $2.3 belongs ONLY to Sandoval.
+4. Before writing a player's value in your response, RE-READ their specific line from the context to verify.
+5. If a player has "NO PROJECTION" on their line, say so - do NOT guess or use another player's values.
+6. If a player has no projection data (listed under "NO PROJECTION DATA"), note them under the table as "Players not found in projection file: [names]"
+7. Be concise but specific - always cite the numbers EXACTLY as they appear in the data.
 
 IMPORTANT - SEPARATE HITTERS AND PITCHERS:
 Always show hitters and pitchers in SEPARATE tables. Pitchers are Pos = SP, RP, or P.
@@ -228,7 +230,7 @@ When making recommendations:
             response = client.chat.completions.create(
                 model=model_to_use,
                 messages=messages,
-                temperature=0.7,
+                temperature=0.3,
                 max_tokens=2500,  # Large enough for full roster tables + analysis
             )
 
@@ -257,7 +259,7 @@ When making recommendations:
                     response = client.chat.completions.create(
                         model=self.mini_model,
                         messages=truncated_messages,
-                        temperature=0.7,
+                        temperature=0.3,
                         max_tokens=2000,
                     )
                     ai_message = response.choices[0].message.content
