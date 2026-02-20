@@ -381,28 +381,97 @@ async def chat(
             )
         context_text += "\n"
 
-        # List each team's roster with hitters and pitchers separated
+        # Smart context filtering: detect which team(s) the user is asking about
+        # Only send relevant team rosters to prevent GPT confusion
+        msg_lower = request.message.lower()
+        msg_clean = request.message  # preserve original case for matching
+
+        # Check for team mentions in user message
+        mentioned_teams = []
         for team_name in all_team_names:
-            hitters = teams_hitters.get(team_name, [])
-            pitchers = teams_pitchers.get(team_name, [])
-            no_proj = teams_no_projection.get(team_name, [])
-            total = len(hitters) + len(pitchers)
-            t = team_totals[team_name]
-            context_text += f"TEAM '{team_name}' ROSTER ({total} players) [Hitting: ${t['hitting']} | Pitching: ${t['pitching']} | Total: ${t['total']} | Rank: {t['rank']}]:\n"
+            # Check various patterns: exact name, @name, partial match
+            team_lower = team_name.lower()
+            team_no_at = team_lower.lstrip('@')
+            if (team_lower in msg_lower or
+                team_no_at in msg_lower or
+                f"@{team_no_at}" in msg_lower):
+                mentioned_teams.append(team_name)
 
-            if hitters:
-                context_text += f"  HITTERS ({len(hitters)}):\n"
-                for p in hitters[:50]:
-                    context_text += f"    - {p}\n"
+        # Determine which teams' rosters to include
+        comparison_keywords = ['compare', 'comparison', 'all teams', 'each team', 'every team',
+                              'category totals', 'team rankings', 'rank teams', 'standings',
+                              'best team', 'worst team', 'league summary']
+        is_comparison = any(kw in msg_lower for kw in comparison_keywords)
 
-            if pitchers:
-                context_text += f"  PITCHERS ({len(pitchers)}):\n"
-                for p in pitchers[:50]:
-                    context_text += f"    - {p}\n"
+        if mentioned_teams and not is_comparison:
+            # User asked about specific team(s) - only send those rosters
+            teams_to_show = mentioned_teams
+            logger.info(f"Single-team query detected: {mentioned_teams}")
+        elif is_comparison:
+            # Comparison query - don't send individual rosters, just the rankings table
+            teams_to_show = []
+            logger.info("Comparison query - using rankings table only")
+        else:
+            # General query - send top 3 teams by $ to keep context manageable
+            teams_to_show = ranked_teams[:3]
+            logger.info(f"General query - sending top 3 teams: {teams_to_show}")
 
-            if no_proj:
-                context_text += f"  NO PROJECTION DATA: {', '.join(no_proj)}\n"
+        # List selected team rosters with hitters and pitchers separated
+        if teams_to_show:
+            for team_name in teams_to_show:
+                hitters = teams_hitters.get(team_name, [])
+                pitchers = teams_pitchers.get(team_name, [])
+                no_proj = teams_no_projection.get(team_name, [])
+                total = len(hitters) + len(pitchers)
+                t = team_totals[team_name]
+                context_text += f"TEAM '{team_name}' ROSTER ({total} players) [Hitting: ${t['hitting']} | Pitching: ${t['pitching']} | Total: ${t['total']} | Rank: {t['rank']}]:\n"
 
+                if hitters:
+                    context_text += f"  HITTERS ({len(hitters)}):\n"
+                    for p in hitters[:50]:
+                        context_text += f"    - {p}\n"
+
+                if pitchers:
+                    context_text += f"  PITCHERS ({len(pitchers)}):\n"
+                    for p in pitchers[:50]:
+                        context_text += f"    - {p}\n"
+
+                if no_proj:
+                    context_text += f"  NO PROJECTION DATA: {', '.join(no_proj)}\n"
+
+                context_text += "\n"
+        else:
+            context_text += "NOTE: Full rosters available. Ask about a specific team to see player details.\n\n"
+
+        # Check if user pasted NFBC IDs in their message - resolve them to player data
+        nfbc_ids_in_msg = _re.findall(r'\b(\d{4,6})\b', request.message)
+        if len(nfbc_ids_in_msg) >= 3:  # Likely a list of IDs (not just random numbers)
+            logger.info(f"Detected {len(nfbc_ids_in_msg)} potential NFBC IDs in message")
+            resolved_players = []
+            unresolved_ids = []
+            for nid in nfbc_ids_in_msg:
+                # Look up in projections by NFBCID
+                if _projections_df is not None and 'NFBCID' in _projections_df.columns:
+                    player_rows = filtered_df[filtered_df['NFBCID'].astype(str) == nid]
+                    if len(player_rows) > 0:
+                        row = player_rows.iloc[0]
+                        name = str(row.get('Name', 'Unknown'))
+                        name = _re.sub(r'\[player id=\d+\]|\[/player\]', '', name).strip()
+                        team = str(row.get('Team', '?'))
+                        pos = str(row.get('Pos', '?'))
+                        dollar_str = nfbc_lookup.get(nid, '')
+                        resolved_players.append(f"{name} (NFBCID:{nid}, {pos}, {team}) [{dollar_str}]")
+                    else:
+                        unresolved_ids.append(nid)
+                else:
+                    unresolved_ids.append(nid)
+
+            if resolved_players:
+                context_text += f"\nPLAYER LOOKUP BY NFBC ID ({len(resolved_players)} found):\n"
+                for p in resolved_players:
+                    context_text += f"  - {p}\n"
+            if unresolved_ids:
+                context_text += f"  UNRESOLVED IDs: {', '.join(unresolved_ids)}\n"
             context_text += "\n"
 
         # List free agents or note if none
