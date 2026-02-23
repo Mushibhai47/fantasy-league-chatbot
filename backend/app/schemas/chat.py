@@ -1,7 +1,7 @@
 """Chat schemas"""
 from pydantic import BaseModel
 from uuid import UUID
-from typing import Optional
+from typing import Optional, List, Dict
 
 
 class ChatRequest(BaseModel):
@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = None  # User ID for tracking message limits
     user_api_key: Optional[str] = None  # User's OpenAI/Claude API key (optional, uses .env if not provided)
     provider: str = "openai"  # 'openai' or 'claude'
+    conversation_history: Optional[List[Dict[str, str]]] = None  # Previous messages for memory
 
 
 class ChatResponse(BaseModel):

@@ -6,7 +6,7 @@
 // Configuration
 const API_BASE_URL = window.location.hostname === 'localhost'
     ? 'http://localhost:8000/api'
-    : 'https://chatbot.razzball.com/api';
+    : 'https://valiant-healing-production-ce05.up.railway.app/api';
 
 // State management
 const state = {
@@ -291,7 +291,8 @@ async function handleSendMessage() {
                 league_id: state.leagueId,
                 user_id: state.userId,
                 user_api_key: state.apiKey || null,  // Optional - backend will use its key if null
-                provider: 'openai'
+                provider: 'openai',
+                conversation_history: state.conversationHistory.slice(-6)  // Send last 6 messages for memory
             })
         });
 

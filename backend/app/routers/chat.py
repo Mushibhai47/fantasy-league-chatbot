@@ -535,10 +535,18 @@ async def chat(
             }
         }
 
+        # Build conversation history (last 6 messages max to save tokens)
+        conversation_history = None
+        if request.conversation_history:
+            # Only keep last 6 messages (3 exchanges) to stay within token limits
+            conversation_history = request.conversation_history[-6:]
+            logger.info(f"Conversation history: {len(conversation_history)} messages")
+
         # Get AI response using FAST gpt-4o-mini
         openai_service = OpenAIService()
         ai_response = openai_service.get_chat_completion(
             user_message=request.message,
+            conversation_history=conversation_history,
             context_data=context_data
         )
 

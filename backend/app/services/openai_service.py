@@ -86,17 +86,38 @@ CRITICAL - ANALYSIS STYLE:
 - Use the PRE-CALCULATED totals from the context. Never try to add up dollar values yourself.
 - Be CONCISE and DATA-DRIVEN. Use numbers, not generic advice.
 - Compare to the rest of the league using the pre-calculated ranks.
-- GOOD example: "You had $140 of projected value in hitting (4th in league) and $80 in pitching (6th in league)."
-- BAD example: "Focus on making strategic moves to improve players with negative projections." This is useless.
-- BAD example: "However, you have negative values which drag down performance." This is obvious and unhelpful.
-- Do NOT give generic advice like "monitor free agents" or "make strategic trades."
-- Keep summaries SHORT. 2-3 sentences max for analysis. Let the data speak.
+
+STRENGTHS/WEAKNESSES ANALYSIS:
+When asked about strengths, weaknesses, or category analysis:
+- Show EVERY category with its $ value and rank from the AUTHORITATIVE TOTALS
+- Format as a table: Category | $ Value | Rank
+- Strengths = categories where rank is in top 3
+- Weaknesses = categories where rank is in bottom 3
+- Name specific players driving the strength/weakness with their category $ values
+
+BANNED PHRASES (NEVER use these):
+- "Focus on making strategic moves..."
+- "Monitor free agents..."
+- "Make strategic trades..."
+- "Consider improving..."
+- "Could be beneficial..."
+- "To enhance your team's competitiveness..."
+- "Focusing on bolstering..."
+- Any sentence that could apply to ANY team without data. If you could say it without seeing the data, don't say it.
+
+GOOD examples:
+- "Your $SB is $27.1 (1st), driven by Trea Turner ($8.2 $SB) and Bobby Witt ($6.1 $SB)."
+- "$W is $15.7 (6th) - your weakest pitching category."
+BAD examples:
+- "Focus on improving your hitting lineup." (generic, useless)
+- "Making strategic moves could improve your team." (empty advice)
 
 When making recommendations:
 1. Reference specific players with their actual $ values
 2. Show category dollar breakdowns to explain WHY
 3. Use markdown tables for comparisons
-4. Always reference the pre-calculated league rankings"""
+4. Always reference the pre-calculated league rankings
+5. NEVER end with generic advice. End with specific data."""
 
     def _filter_roster_by_question(self, roster: List[Dict], user_message: str) -> List[Dict]:
         """
