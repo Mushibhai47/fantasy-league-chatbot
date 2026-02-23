@@ -76,13 +76,13 @@ async def chat(
                 Roster.team_owner != 'Free Agent'
             ).all()
 
-        # Get FREE AGENTS separately (limit to 30)
+        # Get FREE AGENTS separately (no limit - we sort by $ later)
         fa_rosters = db.query(Roster).options(
             joinedload(Roster.player)
         ).filter(
             Roster.league_id == request.league_id,
             Roster.team_owner == 'Free Agent'
-        ).limit(30).all()
+        ).all()
 
         # Fallback for free agents too
         if not fa_rosters:
@@ -91,7 +91,7 @@ async def chat(
             ).filter(
                 Roster.league_id == str(request.league_id),
                 Roster.team_owner == 'Free Agent'
-            ).limit(30).all()
+            ).all()
 
         # Combine
         all_rosters = owned_rosters + fa_rosters
@@ -296,8 +296,10 @@ async def chat(
                 player_str = f"{player.name} | Pos: {player.position} | Team: {player.team} | NO PROJECTION"
 
             if owner == 'Free Agent':
-                if len(free_agents) < 20:
-                    free_agents.append(player_str)
+                # Store tuple (dollar_value, player_str) for sorting later
+                parsed_fa = parse_dollar_categories(dollar_val)
+                fa_dollar = parsed_fa['$'] if parsed_fa['$'] is not None else -999
+                free_agents.append((fa_dollar, player_str))
             else:
                 # Parse all dollar categories
                 parsed = parse_dollar_categories(dollar_val)
@@ -407,15 +409,32 @@ async def chat(
         # Determine which teams' rosters to include
         comparison_keywords = ['compare', 'comparison', 'all teams', 'each team', 'every team',
                               'category totals', 'team rankings', 'rank teams', 'standings',
-                              'best team', 'worst team', 'league summary']
+                              'best team', 'worst team', 'league summary',
+                              'vs the other', 'vs other', 'other teams', 'against other',
+                              'against the other', 'how did', 'how does', 'versus',
+                              'show me all', 'all 15', 'all 12', 'all 10']
         is_comparison = any(kw in msg_lower for kw in comparison_keywords)
 
-        if mentioned_teams and not is_comparison:
-            # User asked about specific team(s) - only send those rosters
+        # Detect free agent / best available queries
+        fa_keywords = ['free agent', 'free agents', 'best available', 'available players',
+                       'waiver', 'waivers', 'pickup', 'pick up', 'not on a team',
+                       'not rostered', 'unrostered', 'fa list']
+        is_fa_query = any(kw in msg_lower for kw in fa_keywords)
+
+        if is_fa_query:
+            # Free agent query - don't send team rosters, focus on FAs
+            teams_to_show = mentioned_teams if mentioned_teams else []
+            logger.info(f"Free agent query detected, teams_to_show={teams_to_show}")
+        elif mentioned_teams and is_comparison:
+            # User mentioned specific team(s) AND wants comparison - show rankings + those teams
+            teams_to_show = mentioned_teams
+            logger.info(f"Comparison query with specific teams: {mentioned_teams}")
+        elif mentioned_teams and not is_comparison:
+            # User asked about specific team(s) only
             teams_to_show = mentioned_teams
             logger.info(f"Single-team query detected: {mentioned_teams}")
         elif is_comparison:
-            # Comparison query - don't send individual rosters, just the rankings table
+            # Pure comparison query - just the rankings table
             teams_to_show = []
             logger.info("Comparison query - using rankings table only")
         else:
@@ -432,7 +451,15 @@ async def chat(
                 no_proj = teams_no_projection.get(team_name, [])
                 total = len(hitters) + len(pitchers)
                 t = team_totals[team_name]
-                context_text += f"TEAM '{team_name}' ROSTER ({total} players) [Hitting: ${t['hitting']} | Pitching: ${t['pitching']} | Total: ${t['total']} | Rank: {t['rank']}]:\n"
+
+                # Put AUTHORITATIVE totals in a very prominent block BEFORE the roster
+                context_text += f"===== TEAM '{team_name}' AUTHORITATIVE TOTALS (from PRE-CALCULATED rankings) =====\n"
+                context_text += f"  TOTAL $: ${t['total']} | RANK: {t['rank']} out of {len(ranked_teams)}\n"
+                context_text += f"  HITTING $: ${t['hitting']} | PITCHING $: ${t['pitching']}\n"
+                context_text += f"  $R: ${t['R']} | $HR: ${t['HR']} | $RBI: ${t['RBI']} | $SB: ${t['SB']} | $AVG: ${t['AVG']}\n"
+                context_text += f"  $W: ${t['W']} | $SV: ${t['SV']} | $K: ${t['K']} | $ERA: ${t['ERA']} | $WHIP: ${t['WHIP']}\n"
+                context_text += f"  USE THESE NUMBERS. DO NOT RECALCULATE.\n"
+                context_text += f"===== ROSTER ({total} players) =====\n"
 
                 if hitters:
                     context_text += f"  HITTERS ({len(hitters)}):\n"
@@ -482,11 +509,15 @@ async def chat(
                 context_text += f"  UNRESOLVED IDs: {', '.join(unresolved_ids)}\n"
             context_text += "\n"
 
-        # List free agents or note if none
+        # Sort free agents by $ descending and show them
         if free_agents:
-            context_text += "TOP FREE AGENTS:\n"
-            for fa in free_agents:
-                context_text += f"  - {fa}\n"
+            # free_agents is list of (dollar_value, player_str) tuples
+            free_agents.sort(key=lambda x: x[0], reverse=True)
+            # Show more FAs if user is asking about free agents/best available
+            fa_limit = 50 if is_fa_query else 20
+            context_text += f"TOP FREE AGENTS (sorted by $ descending, showing top {min(fa_limit, len(free_agents))}):\n"
+            for i, (fa_dollar, fa_str) in enumerate(free_agents[:fa_limit]):
+                context_text += f"  PLAYER: {fa_str}\n"
         else:
             context_text += "NOTE: No free agents in this data (CSV only contains owned players)\n"
 
