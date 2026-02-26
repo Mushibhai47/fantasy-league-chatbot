@@ -243,8 +243,8 @@ async def chat(
         teams_pitchers = {}  # owner -> list of player strings
         teams_no_projection = {}  # owner -> list of player names with no projection
         # Per-team category tracking: owner -> {category -> list of values}
-        HITTER_CATS = ['R', 'HR', 'RBI', 'SB', 'AVG']
-        PITCHER_CATS = ['W', 'SV', 'K', 'ERA', 'WHIP']
+        HITTER_CATS = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP']
+        PITCHER_CATS = ['W', 'SV', 'K', 'ERA', 'WHIP', 'HLD']
         ALL_CATS = HITTER_CATS + PITCHER_CATS
         teams_cat_dollars = {}  # owner -> {'$': [], 'R': [], 'HR': [], ...}
         free_agents = []
@@ -311,10 +311,24 @@ async def chat(
                     for cat in ALL_CATS:
                         teams_cat_dollars[owner][cat] = []
 
+                # Track H/SP/RP counts
+                if 'h_count' not in teams_cat_dollars[owner]:
+                    teams_cat_dollars[owner]['h_count'] = 0
+                    teams_cat_dollars[owner]['sp_count'] = 0
+                    teams_cat_dollars[owner]['rp_count'] = 0
+
                 if is_pitcher:
                     if owner not in teams_pitchers:
                         teams_pitchers[owner] = []
                     teams_pitchers[owner].append(player_str)
+                    # Count SP vs RP
+                    if pos == 'SP':
+                        teams_cat_dollars[owner]['sp_count'] += 1
+                    elif pos == 'RP':
+                        teams_cat_dollars[owner]['rp_count'] += 1
+                    else:
+                        # Generic 'P' - count as SP by default
+                        teams_cat_dollars[owner]['sp_count'] += 1
                     if numeric_dollar is not None:
                         teams_cat_dollars[owner]['p_$'].append(numeric_dollar)
                         # Only sum categories for $1+ players
@@ -330,6 +344,8 @@ async def chat(
                     if owner not in teams_hitters:
                         teams_hitters[owner] = []
                     teams_hitters[owner].append(player_str)
+                    # Count hitters
+                    teams_cat_dollars[owner]['h_count'] += 1
                     if numeric_dollar is not None:
                         teams_cat_dollars[owner]['h_$'].append(numeric_dollar)
                         # Only sum categories for $1+ players
@@ -358,6 +374,9 @@ async def chat(
                 'pitching': round(p_sum, 1),
                 'total': round(h_sum + p_sum, 1),
                 'count': len(h_dollars) + len(p_dollars),
+                'h_count': cd.get('h_count', 0),
+                'sp_count': cd.get('sp_count', 0),
+                'rp_count': cd.get('rp_count', 0),
             }
             # Sum each category ($1+ players only - already filtered during collection)
             for cat in ALL_CATS:
@@ -380,19 +399,143 @@ async def chat(
 
         # Pre-calculated team rankings table with category breakdowns
         context_text += "PRE-CALCULATED TEAM RANKINGS ($1+ players only):\n"
-        context_text += "Team | Total $ | Hitting $ | Pitching $ | $R | $HR | $RBI | $SB | $AVG | $W | $SV | $ERA | $WHIP | $K | Rank\n"
+        context_text += "Team | Total $ | H | SP | RP | $R | $HR | $RBI | $SB | $AVG | $OBP | $W | $SV | $ERA | $WHIP | $K | $HLD | Rank\n"
         for team_name in ranked_teams:
             t = team_totals[team_name]
             context_text += (
-                f"{team_name} | ${t['total']} | ${t['hitting']} | ${t['pitching']} | "
-                f"${t['R']} | ${t['HR']} | ${t['RBI']} | ${t['SB']} | ${t['AVG']} | "
-                f"${t['W']} | ${t['SV']} | ${t['ERA']} | ${t['WHIP']} | ${t['K']} | {t['rank']}\n"
+                f"{team_name} | ${t['total']} | {t['h_count']} | {t['sp_count']} | {t['rp_count']} | "
+                f"${t['R']} | ${t['HR']} | ${t['RBI']} | ${t['SB']} | ${t['AVG']} | ${t['OBP']} | "
+                f"${t['W']} | ${t['SV']} | ${t['ERA']} | ${t['WHIP']} | ${t['K']} | ${t['HLD']} | {t['rank']}\n"
             )
         context_text += "\n"
 
+        # ============================================================
+        # HARD-CODED REPORT GENERATORS (bypass GPT for accuracy)
+        # ============================================================
+
+        def generate_league_overview_dollars() -> str:
+            """Generate League Overview $ table - matches Rudy's SQL LEAGUEREVIEW"""
+            num_teams = len(ranked_teams)
+            lines = []
+            lines.append(f"**League Overview $ ({requested_type}) - {num_teams} Teams**\n")
+            lines.append("| Owner | $ | H | SP | RP | $R | $HR | $RBI | $SB | $AVG | $OBP | $W | $SV | $ERA | $WHIP | $K | $HLD |")
+            lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+            for team_name in ranked_teams:
+                t = team_totals[team_name]
+                lines.append(
+                    f"| {team_name} | {t['total']} | {t['h_count']} | {t['sp_count']} | {t['rp_count']} | "
+                    f"{t['R']} | {t['HR']} | {t['RBI']} | {t['SB']} | {t['AVG']} | {t['OBP']} | "
+                    f"{t['W']} | {t['SV']} | {t['ERA']} | {t['WHIP']} | {t['K']} | {t['HLD']} |"
+                )
+            return "\n".join(lines)
+
+        def generate_league_overview_ranks() -> str:
+            """Generate League Overview Ranks table - roto scoring (num_teams=best, 1=worst)"""
+            num_teams = len(ranked_teams)
+            lines = []
+            lines.append(f"\n**League Overview Ranks (Roto: {num_teams}=Best, 1=Worst)**\n")
+            lines.append("| Owner | $Rank | $R | $HR | $RBI | $SB | $AVG | $OBP | $W | $SV | $ERA | $WHIP | $K | $HLD | Total Pts |")
+            lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+
+            # Calculate roto ranks for each category
+            # Higher $ = better rank for ALL categories (since $ already accounts for direction)
+            roto_cats = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'W', 'SV', 'ERA', 'WHIP', 'K', 'HLD']
+            team_ranks = {team: {} for team in ranked_teams}
+
+            for cat in roto_cats:
+                # Sort teams by category $ (higher = better for roto)
+                sorted_by_cat = sorted(ranked_teams, key=lambda t: team_totals[t][cat])
+                # Assign ranks: position 0 gets rank 1 (worst), position N-1 gets rank N (best)
+                for rank_idx, team_name in enumerate(sorted_by_cat):
+                    team_ranks[team_name][cat] = rank_idx + 1
+
+            # Also rank by total $
+            sorted_by_total = sorted(ranked_teams, key=lambda t: team_totals[t]['total'])
+            for rank_idx, team_name in enumerate(sorted_by_total):
+                team_ranks[team_name]['total_rank'] = rank_idx + 1
+
+            # Calculate total roto points
+            for team_name in ranked_teams:
+                team_ranks[team_name]['roto_total'] = sum(
+                    team_ranks[team_name][cat] for cat in roto_cats
+                )
+
+            # Sort by roto total descending (most points = best)
+            roto_sorted = sorted(ranked_teams, key=lambda t: team_ranks[t]['roto_total'], reverse=True)
+
+            for team_name in roto_sorted:
+                r = team_ranks[team_name]
+                lines.append(
+                    f"| {team_name} | {r['total_rank']} | {r['R']} | {r['HR']} | {r['RBI']} | {r['SB']} | "
+                    f"{r['AVG']} | {r['OBP']} | {r['W']} | {r['SV']} | {r['ERA']} | {r['WHIP']} | "
+                    f"{r['K']} | {r['HLD']} | {r['roto_total']} |"
+                )
+            return "\n".join(lines)
+
+        def generate_league_report() -> str:
+            """Generate full league report ($ table + ranks table)"""
+            report = generate_league_overview_dollars()
+            report += "\n\n"
+            report += generate_league_overview_ranks()
+            return report
+
+        # ============================================================
+        # TRIGGER PHRASE DETECTION - bypass GPT for hard-coded reports
+        # ============================================================
+        msg_lower = request.message.lower()
+
+        report_triggers = [
+            'league overview', 'league review', 'leaguereview', 'league report',
+            'show me the league', 'team rankings', 'rank all teams',
+            'roto standings', 'roto ranks', 'category rankings',
+            'how does the league look', 'league standings',
+            'show all teams', 'show rankings'
+        ]
+
+        is_report_trigger = any(trigger in msg_lower for trigger in report_triggers)
+
+        if is_report_trigger:
+            # BYPASS GPT - return hard-coded report directly
+            logger.info(f"Report trigger detected: '{request.message}' - bypassing GPT")
+            report_response = generate_league_report()
+
+            # Save to chat history
+            try:
+                chat_record = Chat(
+                    league_id=str(request.league_id),
+                    user_message=request.message,
+                    bot_response=report_response
+                )
+                db.add(chat_record)
+                db.commit()
+            except Exception as e:
+                logger.warning(f"Could not save chat: {e}")
+                db.rollback()
+
+            # Increment message usage
+            if not request.user_api_key:
+                try:
+                    user_id = request.user_id or str(request.league_id)
+                    user = MessageLimitService.get_or_create_user(user_id, db)
+                    MessageLimitService.increment_usage(user, db)
+                    messages_remaining = user.monthly_limit - user.messages_used
+                except Exception as e:
+                    logger.warning(f"Could not increment usage: {e}")
+
+            return ChatResponse(
+                message=request.message,
+                response=report_response,
+                tokens_used=0,
+                messages_remaining=messages_remaining,
+                limit_info=limit_message
+            )
+
+        # ============================================================
+        # NORMAL GPT FLOW (for non-report queries)
+        # ============================================================
+
         # Smart context filtering: detect which team(s) the user is asking about
         # Only send relevant team rosters to prevent GPT confusion
-        msg_lower = request.message.lower()
         msg_clean = request.message  # preserve original case for matching
 
         # Check for team mentions in user message
@@ -456,8 +599,8 @@ async def chat(
                 context_text += f"===== TEAM '{team_name}' AUTHORITATIVE TOTALS (from PRE-CALCULATED rankings) =====\n"
                 context_text += f"  TOTAL $: ${t['total']} | RANK: {t['rank']} out of {len(ranked_teams)}\n"
                 context_text += f"  HITTING $: ${t['hitting']} | PITCHING $: ${t['pitching']}\n"
-                context_text += f"  $R: ${t['R']} | $HR: ${t['HR']} | $RBI: ${t['RBI']} | $SB: ${t['SB']} | $AVG: ${t['AVG']}\n"
-                context_text += f"  $W: ${t['W']} | $SV: ${t['SV']} | $K: ${t['K']} | $ERA: ${t['ERA']} | $WHIP: ${t['WHIP']}\n"
+                context_text += f"  $R: ${t['R']} | $HR: ${t['HR']} | $RBI: ${t['RBI']} | $SB: ${t['SB']} | $AVG: ${t['AVG']} | $OBP: ${t['OBP']}\n"
+                context_text += f"  $W: ${t['W']} | $SV: ${t['SV']} | $K: ${t['K']} | $ERA: ${t['ERA']} | $WHIP: ${t['WHIP']} | $HLD: ${t['HLD']}\n"
                 context_text += f"  USE THESE NUMBERS. DO NOT RECALCULATE.\n"
                 context_text += f"===== ROSTER ({total} players) =====\n"
 
