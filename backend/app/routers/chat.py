@@ -413,20 +413,31 @@ async def chat(
         # HARD-CODED REPORT GENERATORS (bypass GPT for accuracy)
         # ============================================================
 
+        # Determine which category columns have non-zero data (hide all-zero columns)
+        all_possible_cats = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'W', 'SV', 'ERA', 'WHIP', 'K', 'HLD']
+        active_cats = []
+        for cat in all_possible_cats:
+            has_nonzero = any(team_totals[t][cat] != 0.0 for t in ranked_teams)
+            if has_nonzero:
+                active_cats.append(cat)
+
         def generate_league_overview_dollars() -> str:
             """Generate League Overview $ table - matches Rudy's SQL LEAGUEREVIEW"""
             num_teams = len(ranked_teams)
             lines = []
             lines.append(f"**League Overview $ ({requested_type}) - {num_teams} Teams**\n")
-            lines.append("| Owner | $ | H | SP | RP | $R | $HR | $RBI | $SB | $AVG | $OBP | $W | $SV | $ERA | $WHIP | $K | $HLD |")
-            lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+            # Build header dynamically - only include non-zero columns
+            header_parts = ['Owner', '$', 'H', 'SP', 'RP']
+            for cat in active_cats:
+                header_parts.append(f'${cat}')
+            lines.append('| ' + ' | '.join(header_parts) + ' |')
+            lines.append('|' + '---|' * len(header_parts))
             for team_name in ranked_teams:
                 t = team_totals[team_name]
-                lines.append(
-                    f"| {team_name} | {t['total']} | {t['h_count']} | {t['sp_count']} | {t['rp_count']} | "
-                    f"{t['R']} | {t['HR']} | {t['RBI']} | {t['SB']} | {t['AVG']} | {t['OBP']} | "
-                    f"{t['W']} | {t['SV']} | {t['ERA']} | {t['WHIP']} | {t['K']} | {t['HLD']} |"
-                )
+                row_parts = [team_name, str(t['total']), str(t['h_count']), str(t['sp_count']), str(t['rp_count'])]
+                for cat in active_cats:
+                    row_parts.append(str(t[cat]))
+                lines.append('| ' + ' | '.join(row_parts) + ' |')
             return "\n".join(lines)
 
         def generate_league_overview_ranks() -> str:
@@ -434,22 +445,23 @@ async def chat(
             num_teams = len(ranked_teams)
             lines = []
             lines.append(f"\n**League Overview Ranks (Roto: {num_teams}=Best, 1=Worst)**\n")
-            lines.append("| Owner | $Rank | $R | $HR | $RBI | $SB | $AVG | $OBP | $W | $SV | $ERA | $WHIP | $K | $HLD | Total Pts |")
-            lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+            # Build header dynamically
+            header_parts = ['Owner', '$Rank']
+            for cat in active_cats:
+                header_parts.append(f'${cat}')
+            header_parts.append('Total Pts')
+            lines.append('| ' + ' | '.join(header_parts) + ' |')
+            lines.append('|' + '---|' * len(header_parts))
 
-            # Calculate roto ranks for each category
-            # Higher $ = better rank for ALL categories (since $ already accounts for direction)
-            roto_cats = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'W', 'SV', 'ERA', 'WHIP', 'K', 'HLD']
+            # Calculate roto ranks for each active category only
             team_ranks = {team: {} for team in ranked_teams}
 
-            for cat in roto_cats:
-                # Sort teams by category $ (higher = better for roto)
+            for cat in active_cats:
                 sorted_by_cat = sorted(ranked_teams, key=lambda t: team_totals[t][cat])
-                # Assign ranks: position 0 gets rank 1 (worst), position N-1 gets rank N (best)
                 for rank_idx, team_name in enumerate(sorted_by_cat):
                     team_ranks[team_name][cat] = rank_idx + 1
 
-            # Also rank by total $
+            # Rank by total $
             sorted_by_total = sorted(ranked_teams, key=lambda t: team_totals[t]['total'])
             for rank_idx, team_name in enumerate(sorted_by_total):
                 team_ranks[team_name]['total_rank'] = rank_idx + 1
@@ -457,7 +469,7 @@ async def chat(
             # Calculate total roto points
             for team_name in ranked_teams:
                 team_ranks[team_name]['roto_total'] = sum(
-                    team_ranks[team_name][cat] for cat in roto_cats
+                    team_ranks[team_name][cat] for cat in active_cats
                 )
 
             # Sort by roto total descending (most points = best)
@@ -465,11 +477,11 @@ async def chat(
 
             for team_name in roto_sorted:
                 r = team_ranks[team_name]
-                lines.append(
-                    f"| {team_name} | {r['total_rank']} | {r['R']} | {r['HR']} | {r['RBI']} | {r['SB']} | "
-                    f"{r['AVG']} | {r['OBP']} | {r['W']} | {r['SV']} | {r['ERA']} | {r['WHIP']} | "
-                    f"{r['K']} | {r['HLD']} | {r['roto_total']} |"
-                )
+                row_parts = [team_name, str(r['total_rank'])]
+                for cat in active_cats:
+                    row_parts.append(str(r[cat]))
+                row_parts.append(str(r['roto_total']))
+                lines.append('| ' + ' | '.join(row_parts) + ' |')
             return "\n".join(lines)
 
         def generate_league_report() -> str:
@@ -479,12 +491,119 @@ async def chat(
             report += generate_league_overview_ranks()
             return report
 
+        def generate_team_overview(target_team: str) -> str:
+            """Generate Team Overview - hitters table + pitchers table for a specific team"""
+            # Find matching team name (fuzzy match)
+            matched_team = None
+            target_lower = target_team.lower().strip().lstrip('@')
+            for t in all_team_names:
+                t_clean = t.lower().strip().lstrip('@')
+                if target_lower in t_clean or t_clean in target_lower:
+                    matched_team = t
+                    break
+
+            if not matched_team:
+                # Try partial word match
+                for t in all_team_names:
+                    t_clean = t.lower().strip().lstrip('@')
+                    if any(word in t_clean for word in target_lower.split() if len(word) > 2):
+                        matched_team = t
+                        break
+
+            if not matched_team:
+                return f"Could not find team matching '{target_team}'. Available teams: {', '.join(all_team_names)}"
+
+            t = team_totals[matched_team]
+            lines = []
+            lines.append(f"**Team Overview: {matched_team}**")
+            lines.append(f"Total: ${t['total']} | Rank: {t['rank']}/{len(ranked_teams)}\n")
+
+            # HITTERS TABLE
+            hitters = teams_hitters.get(matched_team, [])
+            if hitters:
+                # Determine active hitter cats
+                h_cats = [c for c in active_cats if c in HITTER_CATS]
+                lines.append(f"**Hitters ({len(hitters)})**\n")
+                h_header = ['Name', 'Pos', 'Team', '$']
+                for cat in h_cats:
+                    h_header.append(f'${cat}')
+                lines.append('| ' + ' | '.join(h_header) + ' |')
+                lines.append('|' + '---|' * len(h_header))
+
+                # Parse each hitter's data from the player string
+                hitter_rows = []
+                for p_str in hitters:
+                    # Format: "Name | Pos: SP | Team: NYY | $12.3 $R:1.2 $HR:3.4 ..."
+                    parts = p_str.split(' | ')
+                    name = parts[0] if len(parts) > 0 else '?'
+                    pos = parts[1].replace('Pos: ', '') if len(parts) > 1 else '?'
+                    team = parts[2].replace('Team: ', '') if len(parts) > 2 else '?'
+                    dollar_part = parts[3] if len(parts) > 3 else ''
+
+                    # Extract overall $
+                    overall_match = _re.search(r'^\$(-?[\d.]+)', dollar_part)
+                    overall = float(overall_match.group(1)) if overall_match else 0.0
+
+                    # Extract category values
+                    cat_vals = {}
+                    for cat in h_cats:
+                        cat_match = _re.search(rf'\${cat}:(-?[\d.]+)', dollar_part)
+                        cat_vals[cat] = cat_match.group(1) if cat_match else '0'
+
+                    row = [name, pos, team, str(overall)]
+                    for cat in h_cats:
+                        row.append(cat_vals[cat])
+                    hitter_rows.append((overall, '| ' + ' | '.join(row) + ' |'))
+
+                # Sort by $ descending
+                hitter_rows.sort(key=lambda x: x[0], reverse=True)
+                for _, row_str in hitter_rows:
+                    lines.append(row_str)
+
+            # PITCHERS TABLE
+            pitchers = teams_pitchers.get(matched_team, [])
+            if pitchers:
+                p_cats = [c for c in active_cats if c in PITCHER_CATS]
+                lines.append(f"\n**Pitchers ({len(pitchers)})**\n")
+                p_header = ['Name', 'Pos', 'Team', '$']
+                for cat in p_cats:
+                    p_header.append(f'${cat}')
+                lines.append('| ' + ' | '.join(p_header) + ' |')
+                lines.append('|' + '---|' * len(p_header))
+
+                pitcher_rows = []
+                for p_str in pitchers:
+                    parts = p_str.split(' | ')
+                    name = parts[0] if len(parts) > 0 else '?'
+                    pos = parts[1].replace('Pos: ', '') if len(parts) > 1 else '?'
+                    team = parts[2].replace('Team: ', '') if len(parts) > 2 else '?'
+                    dollar_part = parts[3] if len(parts) > 3 else ''
+
+                    overall_match = _re.search(r'^\$(-?[\d.]+)', dollar_part)
+                    overall = float(overall_match.group(1)) if overall_match else 0.0
+
+                    cat_vals = {}
+                    for cat in p_cats:
+                        cat_match = _re.search(rf'\${cat}:(-?[\d.]+)', dollar_part)
+                        cat_vals[cat] = cat_match.group(1) if cat_match else '0'
+
+                    row = [name, pos, team, str(overall)]
+                    for cat in p_cats:
+                        row.append(cat_vals[cat])
+                    pitcher_rows.append((overall, '| ' + ' | '.join(row) + ' |'))
+
+                pitcher_rows.sort(key=lambda x: x[0], reverse=True)
+                for _, row_str in pitcher_rows:
+                    lines.append(row_str)
+
+            return "\n".join(lines)
+
         # ============================================================
         # TRIGGER PHRASE DETECTION - bypass GPT for hard-coded reports
         # ============================================================
         msg_lower = request.message.lower()
 
-        report_triggers = [
+        league_report_triggers = [
             'league overview', 'league review', 'leaguereview', 'league report',
             'show me the league', 'team rankings', 'rank all teams',
             'roto standings', 'roto ranks', 'category rankings',
@@ -492,11 +611,14 @@ async def chat(
             'show all teams', 'show rankings'
         ]
 
-        is_report_trigger = any(trigger in msg_lower for trigger in report_triggers)
+        team_overview_triggers = ['team overview', 'team report', 'show my team', 'my team overview']
 
-        if is_report_trigger:
-            # BYPASS GPT - return hard-coded report directly
-            logger.info(f"Report trigger detected: '{request.message}' - bypassing GPT")
+        is_league_report = any(trigger in msg_lower for trigger in league_report_triggers)
+        is_team_overview = any(trigger in msg_lower for trigger in team_overview_triggers)
+
+        if is_league_report:
+            # BYPASS GPT - return hard-coded league report directly
+            logger.info(f"League report trigger detected: '{request.message}' - bypassing GPT")
             report_response = generate_league_report()
 
             # Save to chat history
@@ -513,6 +635,59 @@ async def chat(
                 db.rollback()
 
             # Increment message usage
+            if not request.user_api_key:
+                try:
+                    user_id = request.user_id or str(request.league_id)
+                    user = MessageLimitService.get_or_create_user(user_id, db)
+                    MessageLimitService.increment_usage(user, db)
+                    messages_remaining = user.monthly_limit - user.messages_used
+                except Exception as e:
+                    logger.warning(f"Could not increment usage: {e}")
+
+            return ChatResponse(
+                message=request.message,
+                response=report_response,
+                tokens_used=0,
+                messages_remaining=messages_remaining,
+                limit_info=limit_message
+            )
+
+        if is_team_overview:
+            # BYPASS GPT - return hard-coded team overview
+            # Extract team name from message (remove trigger phrase to find team name)
+            team_search = msg_lower
+            for trigger in team_overview_triggers:
+                team_search = team_search.replace(trigger, '')
+            # Also try to find team name by checking known team names in the message
+            target_team = team_search.strip().strip(':').strip()
+
+            # If no team name found in remaining text, check for team names in full message
+            if not target_team or len(target_team) < 2:
+                for t in all_team_names:
+                    t_clean = t.lower().strip().lstrip('@')
+                    if t_clean in msg_lower:
+                        target_team = t
+                        break
+
+            if not target_team or len(target_team) < 2:
+                report_response = f"Please specify a team name. Example: 'team overview rudygamble'\n\nAvailable teams: {', '.join(all_team_names)}"
+            else:
+                logger.info(f"Team overview trigger detected for '{target_team}' - bypassing GPT")
+                report_response = generate_team_overview(target_team)
+
+            # Save to chat history
+            try:
+                chat_record = Chat(
+                    league_id=str(request.league_id),
+                    user_message=request.message,
+                    bot_response=report_response
+                )
+                db.add(chat_record)
+                db.commit()
+            except Exception as e:
+                logger.warning(f"Could not save chat: {e}")
+                db.rollback()
+
             if not request.user_api_key:
                 try:
                     user_id = request.user_id or str(request.league_id)

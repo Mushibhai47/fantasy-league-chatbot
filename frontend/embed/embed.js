@@ -23,7 +23,7 @@ const state = {
 document.addEventListener('DOMContentLoaded', init);
 
 function init() {
-    console.log('Razzball Chatbot Embed initializing...');
+    console.log('Razzbot initializing...');
 
     // Try to get user email from parent window (WordPress)
     try {
@@ -576,4 +576,4 @@ window.RazzballChatbot = {
     }
 };
 
-console.log('Razzball Chatbot Embed loaded successfully');
+console.log('Razzbot loaded successfully');
