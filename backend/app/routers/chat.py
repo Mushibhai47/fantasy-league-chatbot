@@ -12,8 +12,10 @@ import logging
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Global projection cache (fetched once, reused for all chats)
+# Global projection caches (fetched once, reused for all chats)
 _projections_df = None
+_weekly_projections_df = None
+_daily_projections_df = None
 
 
 @router.post("/", response_model=ChatResponse)
@@ -598,6 +600,130 @@ async def chat(
 
             return "\n".join(lines)
 
+        def generate_pickups_report(projection_type: str) -> str:
+            """Generate Weekly/Daily Pickups - best available FAs by position"""
+            global _weekly_projections_df, _daily_projections_df
+
+            label = "Weekly" if projection_type == "weekly" else "Daily"
+
+            # Fetch the appropriate projections
+            if projection_type == "weekly":
+                if _weekly_projections_df is None:
+                    try:
+                        svc = ProjectionService(projection_type="weekly")
+                        _weekly_projections_df = svc.fetch_projections()
+                        logger.info(f"Fetched {len(_weekly_projections_df)} weekly projections")
+                    except Exception as e:
+                        logger.error(f"Failed to fetch weekly projections: {e}")
+                        return f"Could not fetch {label.lower()} projections. Please try again later."
+                pickup_df = _weekly_projections_df
+            else:
+                if _daily_projections_df is None:
+                    try:
+                        svc = ProjectionService(projection_type="daily")
+                        _daily_projections_df = svc.fetch_projections()
+                        logger.info(f"Fetched {len(_daily_projections_df)} daily projections")
+                    except Exception as e:
+                        logger.error(f"Failed to fetch daily projections: {e}")
+                        return f"Could not fetch {label.lower()} projections. Please try again later."
+                pickup_df = _daily_projections_df
+
+            # Filter to requested league type
+            if 'LeagueType' in pickup_df.columns:
+                type_df = pickup_df[pickup_df['LeagueType'] == requested_type]
+                if len(type_df) > 0:
+                    pickup_df = type_df
+
+            # Build NFBC ID set of all owned players (not free agents)
+            owned_nfbc_ids = set()
+            for roster in owned_rosters:
+                if roster.player and roster.player.nfbc_id:
+                    owned_nfbc_ids.add(str(roster.player.nfbc_id))
+
+            # Filter projections to only free agents (not owned)
+            fa_rows = []
+            if 'NFBCID' in pickup_df.columns:
+                for _, row in pickup_df.iterrows():
+                    nfbc_id = str(row.get('NFBCID', ''))
+                    if nfbc_id and nfbc_id not in ('nan', 'None', '') and nfbc_id not in owned_nfbc_ids:
+                        dollar_val = row.get('$', 0)
+                        try:
+                            dollar_val = float(dollar_val) if str(dollar_val) not in ('nan', 'None', '') else 0.0
+                        except (ValueError, TypeError):
+                            dollar_val = 0.0
+                        if dollar_val >= 0.5:  # Only show players worth picking up
+                            pos = str(row.get('Pos', '?'))
+                            name = str(row.get('Name', '?'))
+                            name = _re.sub(r'\[player id=\d+\]|\[/player\]', '', name).strip()
+                            team = str(row.get('Team', '?'))
+                            fa_rows.append({
+                                'name': name, 'pos': pos, 'team': team,
+                                'dollar': dollar_val, 'row': row
+                            })
+
+            if not fa_rows:
+                return f"No {label.lower()} pickup data available. Make sure projections are loaded."
+
+            # Group by position
+            position_groups = {
+                'C': [], '1B/3B': [], '2B/SS': [], 'OF/DH': [],
+                'SP': [], 'RP': []
+            }
+
+            for fa in fa_rows:
+                pos = fa['pos'].upper()
+                if pos == 'C':
+                    position_groups['C'].append(fa)
+                elif pos in ('1B', '3B'):
+                    position_groups['1B/3B'].append(fa)
+                elif pos in ('2B', 'SS'):
+                    position_groups['2B/SS'].append(fa)
+                elif pos in ('OF', 'DH', 'LF', 'RF', 'CF'):
+                    position_groups['OF/DH'].append(fa)
+                elif pos == 'SP':
+                    position_groups['SP'].append(fa)
+                elif pos == 'RP':
+                    position_groups['RP'].append(fa)
+
+            lines = []
+            lines.append(f"**{label} Pickups ({requested_type})**\n")
+
+            # Determine which categories to show per group
+            h_cats = [c for c in active_cats if c in HITTER_CATS]
+            p_cats = [c for c in active_cats if c in PITCHER_CATS]
+
+            for group_name, players in position_groups.items():
+                if not players:
+                    continue
+                # Sort by $ descending
+                players.sort(key=lambda x: x['dollar'], reverse=True)
+                top = players[:10]  # Top 10 per position
+
+                is_pitcher_group = group_name in ('SP', 'RP')
+                cats = p_cats if is_pitcher_group else h_cats
+
+                lines.append(f"\n**{group_name} ({len(players)} available, showing top {len(top)})**\n")
+                header = ['Name', 'Pos', 'Team', '$']
+                for cat in cats:
+                    header.append(f'${cat}')
+                lines.append('| ' + ' | '.join(header) + ' |')
+                lines.append('|' + '---|' * len(header))
+
+                for fa in top:
+                    row_data = fa['row']
+                    row_parts = [fa['name'], fa['pos'], fa['team'], str(round(fa['dollar'], 1))]
+                    for cat in cats:
+                        cat_key = f'${cat}$'
+                        val = row_data.get(cat_key, 0)
+                        try:
+                            val = round(float(val), 1) if str(val) not in ('nan', 'None', '') else 0.0
+                        except (ValueError, TypeError):
+                            val = 0.0
+                        row_parts.append(str(val))
+                    lines.append('| ' + ' | '.join(row_parts) + ' |')
+
+            return "\n".join(lines)
+
         # ============================================================
         # TRIGGER PHRASE DETECTION - bypass GPT for hard-coded reports
         # ============================================================
@@ -613,8 +739,15 @@ async def chat(
 
         team_overview_triggers = ['team overview', 'team report', 'show my team', 'my team overview']
 
+        weekly_pickup_triggers = ['weekly pickups', 'weekly pickup', 'weekly picks', 'week pickups',
+                                  'this week', 'weekly best available', 'weekly fa']
+        daily_pickup_triggers = ['daily pickups', 'daily pickup', 'daily picks', 'today pickups',
+                                 'today\'s pickups', 'daily best available', 'daily fa']
+
         is_league_report = any(trigger in msg_lower for trigger in league_report_triggers)
         is_team_overview = any(trigger in msg_lower for trigger in team_overview_triggers)
+        is_weekly_pickups = any(trigger in msg_lower for trigger in weekly_pickup_triggers)
+        is_daily_pickups = any(trigger in msg_lower for trigger in daily_pickup_triggers)
 
         if is_league_report:
             # BYPASS GPT - return hard-coded league report directly
@@ -654,11 +787,13 @@ async def chat(
 
         if is_team_overview:
             # BYPASS GPT - return hard-coded team overview
-            # Extract team name from message (remove trigger phrase to find team name)
+            # Extract team name from message (remove trigger phrase and league type to find team name)
             team_search = msg_lower
             for trigger in team_overview_triggers:
                 team_search = team_search.replace(trigger, '')
-            # Also try to find team name by checking known team names in the message
+            # Strip league type identifiers
+            for lt in AVAILABLE_LEAGUE_TYPES:
+                team_search = team_search.replace(lt.lower(), '')
             target_team = team_search.strip().strip(':').strip()
 
             # If no team name found in remaining text, check for team names in full message
@@ -676,6 +811,41 @@ async def chat(
                 report_response = generate_team_overview(target_team)
 
             # Save to chat history
+            try:
+                chat_record = Chat(
+                    league_id=str(request.league_id),
+                    user_message=request.message,
+                    bot_response=report_response
+                )
+                db.add(chat_record)
+                db.commit()
+            except Exception as e:
+                logger.warning(f"Could not save chat: {e}")
+                db.rollback()
+
+            if not request.user_api_key:
+                try:
+                    user_id = request.user_id or str(request.league_id)
+                    user = MessageLimitService.get_or_create_user(user_id, db)
+                    MessageLimitService.increment_usage(user, db)
+                    messages_remaining = user.monthly_limit - user.messages_used
+                except Exception as e:
+                    logger.warning(f"Could not increment usage: {e}")
+
+            return ChatResponse(
+                message=request.message,
+                response=report_response,
+                tokens_used=0,
+                messages_remaining=messages_remaining,
+                limit_info=limit_message
+            )
+
+        if is_weekly_pickups or is_daily_pickups:
+            # BYPASS GPT - return hard-coded pickup report
+            pickup_type = "weekly" if is_weekly_pickups else "daily"
+            logger.info(f"{pickup_type.title()} pickups trigger detected - bypassing GPT")
+            report_response = generate_pickups_report(pickup_type)
+
             try:
                 chat_record = Chat(
                     league_id=str(request.league_id),
