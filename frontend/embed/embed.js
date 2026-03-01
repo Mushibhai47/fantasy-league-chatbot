@@ -80,8 +80,17 @@ function setupEventListeners() {
     document.querySelectorAll('.quick-action-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const query = e.target.dataset.query;
-            document.getElementById('chat-input').value = query;
-            handleSendMessage();
+            // If team overview, prompt for team name
+            if (query.toLowerCase().startsWith('team overview')) {
+                const teamName = prompt('Enter team/owner name:');
+                if (teamName && teamName.trim()) {
+                    document.getElementById('chat-input').value = query + ' ' + teamName.trim();
+                    handleSendMessage();
+                }
+            } else {
+                document.getElementById('chat-input').value = query;
+                handleSendMessage();
+            }
         });
     });
 
