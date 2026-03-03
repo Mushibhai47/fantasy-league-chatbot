@@ -79,9 +79,10 @@ function setupEventListeners() {
     // Quick action buttons
     document.querySelectorAll('.quick-action-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const query = e.target.dataset.query;
-            // If team overview, prompt for team name
-            if (query.toLowerCase().startsWith('team overview')) {
+            const query = e.target.closest('.quick-action-btn').dataset.query;
+            const qLower = query.toLowerCase();
+            // If team overview or weekly start/sit, prompt for team name
+            if (qLower.startsWith('team overview') || qLower.startsWith('weekly start')) {
                 const teamName = prompt('Enter team/owner name:');
                 if (teamName && teamName.trim()) {
                     document.getElementById('chat-input').value = query + ' ' + teamName.trim();

@@ -7,6 +7,7 @@ from app.services.openai_service import OpenAIService
 from app.services.projection_service import ProjectionService
 from app.services.message_limit_service import MessageLimitService
 from app.schemas.chat import ChatRequest, ChatResponse
+import pandas as pd
 import logging
 
 logger = logging.getLogger(__name__)
@@ -238,6 +239,104 @@ async def chat(
                 if name_lower in proj_name or proj_name in name_lower:
                     return f" [{dollar}]"
             return ""
+
+        # ============================================================
+        # PLATFORM-AWARE MATCHING HELPERS
+        # ============================================================
+        def get_player_match_id(player_obj):
+            """Get the best available ID for matching based on league type"""
+            if league.league_type == 'fantrax' and player_obj.fantrax_id:
+                return ('FantraxID', str(player_obj.fantrax_id))
+            elif league.league_type == 'cbs' and player_obj.cbs_player_name:
+                return ('CBSSportsName', str(player_obj.cbs_player_name))
+            elif player_obj.nfbc_id:
+                return ('NFBCID', str(player_obj.nfbc_id))
+            elif player_obj.fantrax_id:
+                return ('FantraxID', str(player_obj.fantrax_id))
+            return (None, None)
+
+        def build_projection_lookup(df):
+            """Build lookup dict from projection DataFrame based on league type"""
+            lookup = {}
+            id_col = 'NFBCID'  # default
+            if league.league_type == 'fantrax' and 'FantraxID' in df.columns:
+                id_col = 'FantraxID'
+            elif league.league_type == 'cbs' and 'CBSSportsName' in df.columns:
+                id_col = 'CBSSportsName'
+            elif 'NFBCID' in df.columns:
+                id_col = 'NFBCID'
+
+            if id_col in df.columns:
+                for _, row in df.iterrows():
+                    id_val = str(row.get(id_col, ''))
+                    if id_val and id_val not in ('nan', 'None', ''):
+                        lookup[id_val] = row
+            return lookup
+
+        def get_team_player_ids(team_name):
+            """Get dict of {match_id: roster_entry} for a team's players"""
+            result = {}
+            for roster_entry in owned_rosters:
+                owner = roster_entry.team_owner
+                if owner and owner.startswith('@'):
+                    owner = owner[1:]
+                if owner == team_name and roster_entry.player:
+                    _, id_val = get_player_match_id(roster_entry.player)
+                    if id_val:
+                        result[id_val] = roster_entry
+            return result
+
+        def get_owned_ids():
+            """Get set of IDs for all owned players (platform-aware)"""
+            ids = set()
+            for roster_entry in owned_rosters:
+                if roster_entry.player:
+                    _, id_val = get_player_match_id(roster_entry.player)
+                    if id_val:
+                        ids.add(id_val)
+            return ids
+
+        def find_team_name(target_team):
+            """Fuzzy match a team name from user input"""
+            target_lower = target_team.lower().strip().lstrip('@')
+            for t in all_team_names:
+                t_clean = t.lower().strip().lstrip('@')
+                if target_lower in t_clean or t_clean in target_lower:
+                    return t
+            for t in all_team_names:
+                t_clean = t.lower().strip().lstrip('@')
+                if any(word in t_clean for word in target_lower.split() if len(word) > 2):
+                    return t
+            return None
+
+        def fmt_stat(v, decimals=2):
+            """Format a stat value for display"""
+            if str(v) in ('nan', 'None', ''):
+                return '0'
+            try:
+                fv = float(v)
+                if decimals == 3:
+                    return str(round(fv, 3))
+                return str(int(fv)) if fv == int(fv) else str(round(fv, decimals))
+            except (ValueError, TypeError):
+                return str(v)
+
+        def fetch_ros_lookup():
+            """Fetch ROS projections and build a lookup by platform ID"""
+            global _projections_df
+            if _projections_df is None:
+                try:
+                    svc = ProjectionService(projection_type="ros")
+                    _projections_df = svc.fetch_projections()
+                except Exception as e:
+                    logger.error(f"Failed to fetch ROS projections: {e}")
+                    return {}
+            ros_df = _projections_df
+            if 'LeagueType' in ros_df.columns:
+                type_df = ros_df[ros_df['LeagueType'] == requested_type]
+                if len(type_df) > 0:
+                    ros_df = type_df
+            return build_projection_lookup(ros_df)
 
         # Group players by team owner, separating hitters and pitchers
         # Also track dollar values and category $ for pre-calculated totals
@@ -600,11 +699,16 @@ async def chat(
 
             return "\n".join(lines)
 
-        def generate_pickups_report(projection_type: str) -> str:
+        def generate_pickups_report(projection_type: str, use_tomorrow: bool = False) -> str:
             """Generate Weekly/Daily Pickups - best available FAs by position"""
             global _weekly_projections_df, _daily_projections_df
 
-            label = "Weekly" if projection_type == "weekly" else "Daily"
+            if projection_type == "weekly":
+                label = "Weekly"
+            elif use_tomorrow:
+                label = "Tomorrow"
+            else:
+                label = "Today"
 
             # Fetch the appropriate projections
             if projection_type == "weekly":
@@ -634,25 +738,50 @@ async def chat(
                 if len(type_df) > 0:
                     pickup_df = type_df
 
-            # Build NFBC ID set of all owned players (not free agents)
-            owned_nfbc_ids = set()
-            for roster in owned_rosters:
-                if roster.player and roster.player.nfbc_id:
-                    owned_nfbc_ids.add(str(roster.player.nfbc_id))
+            # Filter by date for daily pickups
+            if projection_type == "daily" and 'Date' in pickup_df.columns:
+                from datetime import date, timedelta
+                target_date = date.today() + timedelta(days=1 if use_tomorrow else 0)
+                try:
+                    pickup_df_copy = pickup_df.copy()
+                    pickup_df_copy['_parsed_date'] = pd.to_datetime(pickup_df_copy['Date'], errors='coerce').dt.date
+                    date_filtered = pickup_df_copy[pickup_df_copy['_parsed_date'] == target_date]
+                    if len(date_filtered) > 0:
+                        pickup_df = date_filtered
+                except Exception as e:
+                    logger.warning(f"Could not filter pickups by date: {e}")
+
+            # Platform-aware: build set of owned player IDs
+            owned_ids = get_owned_ids()
+
+            # Determine which ID column to use in the projection data
+            id_col = 'NFBCID'
+            if league.league_type == 'fantrax' and 'FantraxID' in pickup_df.columns:
+                id_col = 'FantraxID'
+            elif league.league_type == 'cbs' and 'CBSSportsName' in pickup_df.columns:
+                id_col = 'CBSSportsName'
 
             # Filter projections to only free agents (not owned)
             fa_rows = []
-            if 'NFBCID' in pickup_df.columns:
+            if id_col in pickup_df.columns:
                 for _, row in pickup_df.iterrows():
-                    nfbc_id = str(row.get('NFBCID', ''))
-                    if nfbc_id and nfbc_id not in ('nan', 'None', '') and nfbc_id not in owned_nfbc_ids:
+                    pid = str(row.get(id_col, ''))
+                    if pid and pid not in ('nan', 'None', '') and pid not in owned_ids:
                         dollar_val = row.get('$', 0)
                         try:
                             dollar_val = float(dollar_val) if str(dollar_val) not in ('nan', 'None', '') else 0.0
                         except (ValueError, TypeError):
                             dollar_val = 0.0
-                        if dollar_val >= 0.5:  # Only show players worth picking up
-                            pos = str(row.get('Pos', '?'))
+
+                        # RP special case: include if SV > 0.2 even below threshold
+                        pos = str(row.get('Pos', '?'))
+                        sv_val = 0.0
+                        try:
+                            sv_val = float(row.get('SV', 0)) if str(row.get('SV', '')).replace('.','').replace('-','').isdigit() else 0.0
+                        except (ValueError, TypeError):
+                            sv_val = 0.0
+
+                        if dollar_val >= -5 or (pos.upper() == 'RP' and sv_val > 0.2):
                             name = str(row.get('Name', '?'))
                             name = _re.sub(r'\[player id=\d+\]|\[/player\]', '', name).strip()
                             team = str(row.get('Team', '?'))
@@ -724,6 +853,347 @@ async def chat(
 
             return "\n".join(lines)
 
+        def generate_weekly_start_sit(target_team: str) -> str:
+            """Generate Weekly Start/Sit - shows user's team with weekly projections (Opp, G, stats)"""
+            global _weekly_projections_df
+
+            # Fetch weekly projections if not cached
+            if _weekly_projections_df is None:
+                try:
+                    svc = ProjectionService(projection_type="weekly")
+                    _weekly_projections_df = svc.fetch_projections()
+                    logger.info(f"Fetched {len(_weekly_projections_df)} weekly projections")
+                except Exception as e:
+                    logger.error(f"Failed to fetch weekly projections: {e}")
+                    return "Could not fetch weekly projections. Please try again later."
+
+            weekly_df = _weekly_projections_df
+
+            # Filter to requested league type
+            if 'LeagueType' in weekly_df.columns:
+                type_df = weekly_df[weekly_df['LeagueType'] == requested_type]
+                if len(type_df) > 0:
+                    weekly_df = type_df
+
+            matched_team = find_team_name(target_team)
+            if not matched_team:
+                return f"Could not find team matching '{target_team}'. Available teams: {', '.join(all_team_names)}"
+
+            # Platform-aware: get team player IDs and build projection lookup
+            team_ids = get_team_player_ids(matched_team)
+            weekly_lookup = build_projection_lookup(weekly_df)
+
+            # Match team players to weekly projections
+            hitter_rows = []
+            pitcher_rows = []
+            inactive_hitters = []
+            inactive_pitchers = []
+
+            # Get ROS lookup for inactive player values
+            ros_lookup = fetch_ros_lookup()
+
+            for match_id, roster_entry in team_ids.items():
+                player = roster_entry.player
+                weekly_row = weekly_lookup.get(match_id)
+
+                if weekly_row is not None:
+                    name = str(weekly_row.get('Name', player.name))
+                    name = _re.sub(r'\[player id=\d+\]|\[/player\]', '', name).strip()
+                    pos = str(weekly_row.get('Pos', player.position or '?'))
+                    team = str(weekly_row.get('Team', player.team or '?'))
+                    opp = str(weekly_row.get('Opp', ''))
+                    if opp in ('nan', 'None'):
+                        opp = ''
+                    dollar = weekly_row.get('$', 0)
+                    try:
+                        dollar = float(dollar) if str(dollar) not in ('nan', 'None', '') else 0.0
+                    except (ValueError, TypeError):
+                        dollar = 0.0
+
+                    games = weekly_row.get('G', '')
+                    try:
+                        games = int(float(games)) if str(games) not in ('nan', 'None', '') else ''
+                    except (ValueError, TypeError):
+                        games = ''
+
+                    # Get weekly-specific fields
+                    week_of = weekly_row.get('Week of', '')
+                    team_games = weekly_row.get('Team_Games', '')
+                    home_away = ''
+                    t_home = weekly_row.get('Team_HomeGames', '')
+                    t_away = weekly_row.get('Team_AwayGames', '')
+                    if str(t_home) not in ('nan', 'None', '') and str(t_away) not in ('nan', 'None', ''):
+                        home_away = f"{fmt_stat(t_home)}/{fmt_stat(t_away)}"
+
+                    is_pitcher = pos.upper() in ('SP', 'RP', 'P')
+
+                    if is_pitcher:
+                        pitcher_rows.append((dollar, [
+                            name, pos, team, opp, str(round(dollar, 1)),
+                            fmt_stat(weekly_row.get('GS', '')), fmt_stat(weekly_row.get('QS', '')),
+                            fmt_stat(weekly_row.get('W', '')), fmt_stat(weekly_row.get('L', '')),
+                            fmt_stat(weekly_row.get('IP', '')),
+                            fmt_stat(weekly_row.get('SO_Pitch', weekly_row.get('K', ''))),
+                            fmt_stat(weekly_row.get('ERA', '')), fmt_stat(weekly_row.get('WHIP', '')),
+                            fmt_stat(team_games), home_away
+                        ]))
+                    else:
+                        hitter_rows.append((dollar, [
+                            name, pos, team, opp, str(round(dollar, 1)),
+                            str(games),
+                            fmt_stat(weekly_row.get('R', '')), fmt_stat(weekly_row.get('HR', '')),
+                            fmt_stat(weekly_row.get('RBI', '')), fmt_stat(weekly_row.get('SB', '')),
+                            fmt_stat(weekly_row.get('AVG', ''), 3), fmt_stat(weekly_row.get('OBP', ''), 3),
+                            fmt_stat(team_games), home_away
+                        ]))
+                else:
+                    # No weekly projection = inactive player. Cross-ref with ROS
+                    ros_row = ros_lookup.get(match_id)
+                    pos = player.position or '?'
+                    is_pitcher = pos.upper() in ('SP', 'RP', 'P')
+                    ros_dollar = ''
+                    ros_per_game = ''
+                    if ros_row is not None:
+                        rd = ros_row.get('$', '')
+                        if str(rd) not in ('nan', 'None', ''):
+                            ros_dollar = fmt_stat(rd)
+                        rpg = ros_row.get('$/G$', '')
+                        if str(rpg) not in ('nan', 'None', ''):
+                            ros_per_game = fmt_stat(rpg)
+
+                    inactive_entry = [player.name, player.team or '?', ros_dollar, ros_per_game]
+                    sort_val = float(ros_dollar) if ros_dollar else -999
+                    if is_pitcher:
+                        inactive_pitchers.append((sort_val, inactive_entry))
+                    else:
+                        inactive_hitters.append((sort_val, inactive_entry))
+
+            # Sort by $ descending
+            hitter_rows.sort(key=lambda x: x[0], reverse=True)
+            pitcher_rows.sort(key=lambda x: x[0], reverse=True)
+            inactive_hitters.sort(key=lambda x: x[0], reverse=True)
+            inactive_pitchers.sort(key=lambda x: x[0], reverse=True)
+
+            lines = []
+            lines.append(f"**Weekly Start/Sit: {matched_team} ({requested_type})**\n")
+
+            # Hitters table
+            if hitter_rows:
+                lines.append(f"**Hitters ({len(hitter_rows)})**\n")
+                h_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'G', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'Games', 'H/A']
+                lines.append('| ' + ' | '.join(h_header) + ' |')
+                lines.append('|' + '---|' * len(h_header))
+                for _, row_data in hitter_rows:
+                    lines.append('| ' + ' | '.join(row_data) + ' |')
+
+            # Pitchers table
+            if pitcher_rows:
+                lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
+                p_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'GS', 'QS', 'W', 'L', 'IP', 'K', 'ERA', 'WHIP', 'Games', 'H/A']
+                lines.append('| ' + ' | '.join(p_header) + ' |')
+                lines.append('|' + '---|' * len(p_header))
+                for _, row_data in pitcher_rows:
+                    lines.append('| ' + ' | '.join(row_data) + ' |')
+
+            # Inactive hitters
+            if inactive_hitters:
+                lines.append(f"\n**Inactive Hitters ({len(inactive_hitters)})** - No weekly projection\n")
+                lines.append('| Name | Team | ROS $ | $/G |')
+                lines.append('|---|---|---|---|')
+                for _, row_data in inactive_hitters:
+                    lines.append('| ' + ' | '.join(row_data) + ' |')
+
+            # Inactive pitchers
+            if inactive_pitchers:
+                lines.append(f"\n**Inactive Pitchers ({len(inactive_pitchers)})** - No weekly projection\n")
+                lines.append('| Name | Team | ROS $ | $/G |')
+                lines.append('|---|---|---|---|')
+                for _, row_data in inactive_pitchers:
+                    lines.append('| ' + ' | '.join(row_data) + ' |')
+
+            if not hitter_rows and not pitcher_rows and not inactive_hitters and not inactive_pitchers:
+                lines.append("No weekly projection data found for this team's players.")
+
+            return "\n".join(lines)
+
+        def generate_daily_start_sit(target_team: str, use_tomorrow: bool = False) -> str:
+            """Generate Daily Start/Sit - shows user's team with today's/tomorrow's projections"""
+            global _daily_projections_df
+
+            day_label = "Tomorrow" if use_tomorrow else "Today"
+
+            # Fetch daily projections if not cached
+            if _daily_projections_df is None:
+                try:
+                    svc = ProjectionService(projection_type="daily")
+                    _daily_projections_df = svc.fetch_projections()
+                    logger.info(f"Fetched {len(_daily_projections_df)} daily projections")
+                except Exception as e:
+                    logger.error(f"Failed to fetch daily projections: {e}")
+                    return f"Could not fetch daily projections. Please try again later."
+
+            daily_df = _daily_projections_df
+
+            # Filter to requested league type
+            if 'LeagueType' in daily_df.columns:
+                type_df = daily_df[daily_df['LeagueType'] == requested_type]
+                if len(type_df) > 0:
+                    daily_df = type_df
+
+            # Filter by date (today or tomorrow)
+            from datetime import date, timedelta
+            target_date = date.today() + timedelta(days=1 if use_tomorrow else 0)
+
+            if 'Date' in daily_df.columns:
+                try:
+                    daily_df_dated = daily_df.copy()
+                    daily_df_dated['_parsed_date'] = pd.to_datetime(daily_df_dated['Date'], errors='coerce').dt.date
+                    date_filtered = daily_df_dated[daily_df_dated['_parsed_date'] == target_date]
+                    if len(date_filtered) > 0:
+                        daily_df = date_filtered
+                        logger.info(f"Filtered daily projections to {target_date}: {len(daily_df)} rows")
+                    else:
+                        logger.warning(f"No daily projections found for {target_date}, using all dates")
+                except Exception as e:
+                    logger.warning(f"Could not filter by date: {e}")
+
+            matched_team = find_team_name(target_team)
+            if not matched_team:
+                return f"Could not find team matching '{target_team}'. Available teams: {', '.join(all_team_names)}"
+
+            # Platform-aware matching
+            team_ids = get_team_player_ids(matched_team)
+            daily_lookup = build_projection_lookup(daily_df)
+
+            hitter_rows = []
+            pitcher_rows = []
+            inactive_hitters = []
+            inactive_pitchers = []
+
+            # ROS lookup for inactive player values
+            ros_lookup = fetch_ros_lookup()
+
+            for match_id, roster_entry in team_ids.items():
+                player = roster_entry.player
+                daily_row = daily_lookup.get(match_id)
+
+                if daily_row is not None:
+                    name = str(daily_row.get('Name', player.name))
+                    name = _re.sub(r'\[player id=\d+\]|\[/player\]', '', name).strip()
+                    pos = str(daily_row.get('Pos', player.position or '?'))
+                    team = str(daily_row.get('Team', player.team or '?'))
+                    opp = str(daily_row.get('Opp', ''))
+                    if opp in ('nan', 'None'):
+                        opp = ''
+                    dollar = daily_row.get('$', 0)
+                    try:
+                        dollar = float(dollar) if str(dollar) not in ('nan', 'None', '') else 0.0
+                    except (ValueError, TypeError):
+                        dollar = 0.0
+
+                    # Get ROS context
+                    ros_row = ros_lookup.get(match_id)
+                    ros12 = ''
+                    ros_pg = ''
+                    if ros_row is not None:
+                        rd = ros_row.get('$', '')
+                        if str(rd) not in ('nan', 'None', ''):
+                            ros12 = fmt_stat(rd)
+                        rpg = ros_row.get('$/G$', '')
+                        if str(rpg) not in ('nan', 'None', ''):
+                            ros_pg = fmt_stat(rpg)
+
+                    is_pitcher = pos.upper() in ('SP', 'RP', 'P')
+
+                    if is_pitcher:
+                        pitcher_rows.append((dollar, [
+                            name, pos, team, opp, str(round(dollar, 1)),
+                            fmt_stat(daily_row.get('GS', '')), fmt_stat(daily_row.get('QS', '')),
+                            fmt_stat(daily_row.get('W', '')), fmt_stat(daily_row.get('L', '')),
+                            fmt_stat(daily_row.get('IP', '')),
+                            fmt_stat(daily_row.get('SO_Pitch', daily_row.get('K', ''))),
+                            fmt_stat(daily_row.get('ERA', '')), fmt_stat(daily_row.get('WHIP', '')),
+                            ros12, ros_pg
+                        ]))
+                    else:
+                        hitter_rows.append((dollar, [
+                            name, pos, team, opp, str(round(dollar, 1)),
+                            fmt_stat(daily_row.get('R', '')), fmt_stat(daily_row.get('HR', '')),
+                            fmt_stat(daily_row.get('RBI', '')), fmt_stat(daily_row.get('SB', '')),
+                            fmt_stat(daily_row.get('AVG', ''), 3), fmt_stat(daily_row.get('OBP', ''), 3),
+                            fmt_stat(daily_row.get('SLG', ''), 3),
+                            ros12, ros_pg
+                        ]))
+                else:
+                    # No daily projection = inactive/no game. Cross-ref with ROS
+                    ros_row = ros_lookup.get(match_id)
+                    pos = player.position or '?'
+                    is_pitcher = pos.upper() in ('SP', 'RP', 'P')
+                    ros_dollar = ''
+                    ros_per_game = ''
+                    if ros_row is not None:
+                        rd = ros_row.get('$', '')
+                        if str(rd) not in ('nan', 'None', ''):
+                            ros_dollar = fmt_stat(rd)
+                        rpg = ros_row.get('$/G$', '')
+                        if str(rpg) not in ('nan', 'None', ''):
+                            ros_per_game = fmt_stat(rpg)
+
+                    inactive_entry = [player.name, player.team or '?', ros_dollar, ros_per_game]
+                    sort_val = float(ros_dollar) if ros_dollar else -999
+                    if is_pitcher:
+                        inactive_pitchers.append((sort_val, inactive_entry))
+                    else:
+                        inactive_hitters.append((sort_val, inactive_entry))
+
+            # Sort all by $ descending
+            hitter_rows.sort(key=lambda x: x[0], reverse=True)
+            pitcher_rows.sort(key=lambda x: x[0], reverse=True)
+            inactive_hitters.sort(key=lambda x: x[0], reverse=True)
+            inactive_pitchers.sort(key=lambda x: x[0], reverse=True)
+
+            lines = []
+            lines.append(f"**{day_label} Start/Sit: {matched_team} ({requested_type})**\n")
+
+            # Hitters table
+            if hitter_rows:
+                lines.append(f"**Hitters ({len(hitter_rows)})**\n")
+                h_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG', 'ROS$', '$/G']
+                lines.append('| ' + ' | '.join(h_header) + ' |')
+                lines.append('|' + '---|' * len(h_header))
+                for _, row_data in hitter_rows:
+                    lines.append('| ' + ' | '.join(row_data) + ' |')
+
+            # Pitchers table
+            if pitcher_rows:
+                lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
+                p_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'GS', 'QS', 'W', 'L', 'IP', 'K', 'ERA', 'WHIP', 'ROS$', '$/G']
+                lines.append('| ' + ' | '.join(p_header) + ' |')
+                lines.append('|' + '---|' * len(p_header))
+                for _, row_data in pitcher_rows:
+                    lines.append('| ' + ' | '.join(row_data) + ' |')
+
+            # Inactive hitters (no game today / not on active roster)
+            if inactive_hitters:
+                lines.append(f"\n**Inactive Hitters ({len(inactive_hitters)})** - No game {day_label.lower()}\n")
+                lines.append('| Name | Team | ROS $ | $/G |')
+                lines.append('|---|---|---|---|')
+                for _, row_data in inactive_hitters:
+                    lines.append('| ' + ' | '.join(row_data) + ' |')
+
+            # Inactive pitchers
+            if inactive_pitchers:
+                lines.append(f"\n**Inactive Pitchers ({len(inactive_pitchers)})** - No game {day_label.lower()}\n")
+                lines.append('| Name | Team | ROS $ | $/G |')
+                lines.append('|---|---|---|---|')
+                for _, row_data in inactive_pitchers:
+                    lines.append('| ' + ' | '.join(row_data) + ' |')
+
+            if not hitter_rows and not pitcher_rows and not inactive_hitters and not inactive_pitchers:
+                lines.append(f"No daily projection data found for {day_label.lower()}.")
+
+            return "\n".join(lines)
+
         # ============================================================
         # TRIGGER PHRASE DETECTION - bypass GPT for hard-coded reports
         # ============================================================
@@ -740,14 +1210,31 @@ async def chat(
         team_overview_triggers = ['team overview', 'team report', 'show my team', 'my team overview']
 
         weekly_pickup_triggers = ['weekly pickups', 'weekly pickup', 'weekly picks', 'week pickups',
-                                  'this week', 'weekly best available', 'weekly fa']
+                                  'weekly best available', 'weekly fa']
         daily_pickup_triggers = ['daily pickups', 'daily pickup', 'daily picks', 'today pickups',
-                                 'today\'s pickups', 'daily best available', 'daily fa']
+                                 'today\'s pickups', 'daily best available', 'daily fa',
+                                 'today best available']
+        tomorrow_pickup_triggers = ['tomorrow pickups', 'tomorrow pickup', 'tomorrow picks',
+                                    'tomorrow\'s pickups', 'tomorrow best available', 'tomorrow fa']
+        weekly_start_sit_triggers = ['weekly start/sit', 'weekly start sit',
+                                     'weekly roster', 'weekly team', 'this week team',
+                                     'my week', 'week overview', 'week start']
+        daily_start_sit_triggers = ['today start/sit', 'today start sit', 'daily start/sit',
+                                    'daily start sit', 'today roster', 'today team',
+                                    'today overview', 'today\'s start', 'my today']
+        tomorrow_start_sit_triggers = ['tomorrow start/sit', 'tomorrow start sit',
+                                       'tomorrow roster', 'tomorrow team',
+                                       'tomorrow overview', 'tomorrow\'s start', 'my tomorrow']
 
+        # Order matters: check more specific triggers first (tomorrow before today, daily before weekly)
         is_league_report = any(trigger in msg_lower for trigger in league_report_triggers)
         is_team_overview = any(trigger in msg_lower for trigger in team_overview_triggers)
+        is_tomorrow_pickups = any(trigger in msg_lower for trigger in tomorrow_pickup_triggers)
+        is_tomorrow_start_sit = any(trigger in msg_lower for trigger in tomorrow_start_sit_triggers)
+        is_daily_start_sit = any(trigger in msg_lower for trigger in daily_start_sit_triggers)
         is_weekly_pickups = any(trigger in msg_lower for trigger in weekly_pickup_triggers)
         is_daily_pickups = any(trigger in msg_lower for trigger in daily_pickup_triggers)
+        is_weekly_start_sit = any(trigger in msg_lower for trigger in weekly_start_sit_triggers)
 
         if is_league_report:
             # BYPASS GPT - return hard-coded league report directly
@@ -840,11 +1327,126 @@ async def chat(
                 limit_info=limit_message
             )
 
-        if is_weekly_pickups or is_daily_pickups:
+        if is_weekly_start_sit:
+            # BYPASS GPT - return weekly start/sit for user's team
+            # Extract team name (same logic as team overview)
+            team_search = msg_lower
+            for trigger in weekly_start_sit_triggers:
+                team_search = team_search.replace(trigger, '')
+            for lt in AVAILABLE_LEAGUE_TYPES:
+                team_search = team_search.replace(lt.lower(), '')
+            target_team = team_search.strip().strip(':').strip()
+
+            if not target_team or len(target_team) < 2:
+                for t in all_team_names:
+                    t_clean = t.lower().strip().lstrip('@')
+                    if t_clean in msg_lower:
+                        target_team = t
+                        break
+
+            if not target_team or len(target_team) < 2:
+                report_response = f"Please specify a team name. Example: 'weekly start/sit rudygamble'\n\nAvailable teams: {', '.join(all_team_names)}"
+            else:
+                logger.info(f"Weekly start/sit trigger detected for '{target_team}' - bypassing GPT")
+                report_response = generate_weekly_start_sit(target_team)
+
+            try:
+                chat_record = Chat(
+                    league_id=str(request.league_id),
+                    user_message=request.message,
+                    bot_response=report_response
+                )
+                db.add(chat_record)
+                db.commit()
+            except Exception as e:
+                logger.warning(f"Could not save chat: {e}")
+                db.rollback()
+
+            if not request.user_api_key:
+                try:
+                    user_id = request.user_id or str(request.league_id)
+                    user = MessageLimitService.get_or_create_user(user_id, db)
+                    MessageLimitService.increment_usage(user, db)
+                    messages_remaining = user.monthly_limit - user.messages_used
+                except Exception as e:
+                    logger.warning(f"Could not increment usage: {e}")
+
+            return ChatResponse(
+                message=request.message,
+                response=report_response,
+                tokens_used=0,
+                messages_remaining=messages_remaining,
+                limit_info=limit_message
+            )
+
+        if is_daily_start_sit or is_tomorrow_start_sit:
+            # BYPASS GPT - return daily start/sit for user's team
+            use_tomorrow = is_tomorrow_start_sit
+            day_label = "Tomorrow" if use_tomorrow else "Today"
+            team_search = msg_lower
+            all_daily_ss_triggers = daily_start_sit_triggers + tomorrow_start_sit_triggers
+            for trigger in all_daily_ss_triggers:
+                team_search = team_search.replace(trigger, '')
+            for lt in AVAILABLE_LEAGUE_TYPES:
+                team_search = team_search.replace(lt.lower(), '')
+            target_team = team_search.strip().strip(':').strip()
+
+            if not target_team or len(target_team) < 2:
+                for t in all_team_names:
+                    t_clean = t.lower().strip().lstrip('@')
+                    if t_clean in msg_lower:
+                        target_team = t
+                        break
+
+            if not target_team or len(target_team) < 2:
+                report_response = f"Please specify a team name. Example: '{day_label.lower()} start/sit rudygamble'\n\nAvailable teams: {', '.join(all_team_names)}"
+            else:
+                logger.info(f"{day_label} start/sit trigger detected for '{target_team}' - bypassing GPT")
+                report_response = generate_daily_start_sit(target_team, use_tomorrow=use_tomorrow)
+
+            try:
+                chat_record = Chat(
+                    league_id=str(request.league_id),
+                    user_message=request.message,
+                    bot_response=report_response
+                )
+                db.add(chat_record)
+                db.commit()
+            except Exception as e:
+                logger.warning(f"Could not save chat: {e}")
+                db.rollback()
+
+            if not request.user_api_key:
+                try:
+                    user_id = request.user_id or str(request.league_id)
+                    user = MessageLimitService.get_or_create_user(user_id, db)
+                    MessageLimitService.increment_usage(user, db)
+                    messages_remaining = user.monthly_limit - user.messages_used
+                except Exception as e:
+                    logger.warning(f"Could not increment usage: {e}")
+
+            return ChatResponse(
+                message=request.message,
+                response=report_response,
+                tokens_used=0,
+                messages_remaining=messages_remaining,
+                limit_info=limit_message
+            )
+
+        if is_tomorrow_pickups or is_weekly_pickups or is_daily_pickups:
             # BYPASS GPT - return hard-coded pickup report
-            pickup_type = "weekly" if is_weekly_pickups else "daily"
-            logger.info(f"{pickup_type.title()} pickups trigger detected - bypassing GPT")
-            report_response = generate_pickups_report(pickup_type)
+            if is_weekly_pickups:
+                pickup_type = "weekly"
+                use_tomorrow = False
+            elif is_tomorrow_pickups:
+                pickup_type = "daily"
+                use_tomorrow = True
+            else:
+                pickup_type = "daily"
+                use_tomorrow = False
+            label = "Tomorrow" if use_tomorrow else ("Weekly" if pickup_type == "weekly" else "Today")
+            logger.info(f"{label} pickups trigger detected - bypassing GPT")
+            report_response = generate_pickups_report(pickup_type, use_tomorrow=use_tomorrow)
 
             try:
                 chat_record = Chat(

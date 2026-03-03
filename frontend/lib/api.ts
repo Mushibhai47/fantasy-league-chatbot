@@ -32,12 +32,15 @@ export interface RosterResponse {
 export interface ChatRequest {
   league_id: string;
   message: string;
+  conversation_history?: { role: string; content: string }[];
 }
 
 export interface ChatResponse {
   message: string;
   response: string;
   tokens_used: number;
+  messages_remaining?: number;
+  limit_info?: string;
 }
 
 // Upload CSV file

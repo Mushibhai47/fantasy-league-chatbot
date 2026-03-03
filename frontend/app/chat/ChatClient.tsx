@@ -13,11 +13,12 @@ export default function ChatClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const leagueId = searchParams.get('leagueId');
+  const ownerName = searchParams.get('owner') || '';
 
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: 'Hello! I\'m your fantasy baseball assistant. I have access to your roster and free agents. Ask me anything about pickups, drops, or roster strategy!',
+      content: 'Hello! I\'m your fantasy baseball assistant. I have access to your roster and free agents. Use the quick action buttons below or ask me anything!',
     },
   ]);
   const [input, setInput] = useState('');
@@ -25,6 +26,7 @@ export default function ChatClient() {
   const [roster, setRoster] = useState<Player[]>([]);
   const [freeAgents, setFreeAgents] = useState<Player[]>([]);
   const [showRoster, setShowRoster] = useState(false);
+  const [activeTab, setActiveTab] = useState<'today' | 'tomorrow' | 'weekly'>('today');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -54,18 +56,25 @@ export default function ChatClient() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || loading || !leagueId) return;
+  // Build conversation history from messages (last 6 for context)
+  const getConversationHistory = () => {
+    return messages.slice(-6).map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+  };
 
-    const userMessage = input.trim();
-    setInput('');
-    setMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
+  const sendMessage = async (messageText: string) => {
+    if (!messageText.trim() || loading || !leagueId) return;
+
+    setMessages((prev) => [...prev, { role: 'user', content: messageText }]);
     setLoading(true);
 
     try {
       const response = await sendChatMessage({
         league_id: leagueId,
-        message: userMessage,
+        message: messageText,
+        conversation_history: getConversationHistory(),
       });
 
       setMessages((prev) => [
@@ -85,6 +94,13 @@ export default function ChatClient() {
     }
   };
 
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    const msg = input.trim();
+    setInput('');
+    await sendMessage(msg);
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -92,9 +108,18 @@ export default function ChatClient() {
     }
   };
 
+  // Quick action: sends a pre-built message
+  const quickAction = (message: string) => {
+    if (loading) return;
+    sendMessage(message);
+  };
+
   if (!leagueId) {
     return null;
   }
+
+  // Build team identifier for quick actions
+  const teamId = ownerName || 'my team';
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -104,7 +129,8 @@ export default function ChatClient() {
           <div>
             <h1 className="text-2xl font-bold">Fantasy Baseball Assistant</h1>
             <p className="text-sm text-white/80">
-              {roster.length} players in roster • {freeAgents.length} free agents
+              {roster.length} players in roster {freeAgents.length > 0 && `\u2022 ${freeAgents.length} free agents`}
+              {ownerName && ` \u2022 ${ownerName}`}
             </p>
           </div>
           <div className="flex gap-2">
@@ -128,7 +154,7 @@ export default function ChatClient() {
         {/* Chat Area */}
         <div className="flex-1 flex flex-col">
           {/* Messages */}
-          <div className="flex-1 bg-white rounded-lg shadow-md p-4 mb-4 overflow-y-auto max-h-[calc(100vh-250px)]">
+          <div className="flex-1 bg-white rounded-lg shadow-md p-4 mb-4 overflow-y-auto max-h-[calc(100vh-340px)]">
             <div className="space-y-4">
               {messages.map((message, index) => (
                 <div
@@ -144,7 +170,7 @@ export default function ChatClient() {
                         : 'bg-gray-100 text-gray-900'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    <p className="whitespace-pre-wrap text-sm font-mono">{message.content}</p>
                   </div>
                 </div>
               ))}
@@ -160,6 +186,116 @@ export default function ChatClient() {
                 </div>
               )}
               <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* Quick Action Buttons */}
+          <div className="bg-white rounded-lg shadow-md p-3 mb-3">
+            {/* Tab Selector */}
+            <div className="flex gap-1 mb-3">
+              <button
+                onClick={() => setActiveTab('today')}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  activeTab === 'today'
+                    ? 'bg-razzball-primary text-white'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+              >
+                Today
+              </button>
+              <button
+                onClick={() => setActiveTab('tomorrow')}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  activeTab === 'tomorrow'
+                    ? 'bg-razzball-primary text-white'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+              >
+                Tomorrow
+              </button>
+              <button
+                onClick={() => setActiveTab('weekly')}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  activeTab === 'weekly'
+                    ? 'bg-razzball-primary text-white'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+              >
+                Weekly
+              </button>
+            </div>
+
+            {/* Action Buttons per Tab */}
+            <div className="flex flex-wrap gap-2">
+              {activeTab === 'today' && (
+                <>
+                  <button
+                    onClick={() => quickAction(`today start/sit ${teamId}`)}
+                    disabled={loading}
+                    className="text-sm bg-green-100 hover:bg-green-200 text-green-800 px-3 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50"
+                  >
+                    Today Start/Sit
+                  </button>
+                  <button
+                    onClick={() => quickAction('today pickups')}
+                    disabled={loading}
+                    className="text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50"
+                  >
+                    Today Pickups
+                  </button>
+                </>
+              )}
+              {activeTab === 'tomorrow' && (
+                <>
+                  <button
+                    onClick={() => quickAction(`tomorrow start/sit ${teamId}`)}
+                    disabled={loading}
+                    className="text-sm bg-green-100 hover:bg-green-200 text-green-800 px-3 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50"
+                  >
+                    Tomorrow Start/Sit
+                  </button>
+                  <button
+                    onClick={() => quickAction('tomorrow pickups')}
+                    disabled={loading}
+                    className="text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50"
+                  >
+                    Tomorrow Pickups
+                  </button>
+                </>
+              )}
+              {activeTab === 'weekly' && (
+                <>
+                  <button
+                    onClick={() => quickAction(`weekly start/sit ${teamId}`)}
+                    disabled={loading}
+                    className="text-sm bg-green-100 hover:bg-green-200 text-green-800 px-3 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50"
+                  >
+                    Weekly Start/Sit
+                  </button>
+                  <button
+                    onClick={() => quickAction('weekly pickups')}
+                    disabled={loading}
+                    className="text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 px-3 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50"
+                  >
+                    Weekly Pickups
+                  </button>
+                </>
+              )}
+              {/* Always-visible buttons */}
+              <button
+                onClick={() => quickAction('league overview')}
+                disabled={loading}
+                className="text-sm bg-purple-100 hover:bg-purple-200 text-purple-800 px-3 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50"
+              >
+                League Overview
+              </button>
+              <button
+                onClick={() => quickAction(`team overview ${teamId}`)}
+                disabled={loading}
+                className="text-sm bg-orange-100 hover:bg-orange-200 text-orange-800 px-3 py-1.5 rounded-lg transition-colors font-medium disabled:opacity-50"
+              >
+                My Team Overview
+              </button>
             </div>
           </div>
 
@@ -181,28 +317,6 @@ export default function ChatClient() {
                 className="btn-primary px-8"
               >
                 Send
-              </button>
-            </div>
-
-            {/* Suggested Questions */}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                onClick={() => setInput('Who should I pick up for home runs?')}
-                className="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors"
-              >
-                Who should I pick up for HR?
-              </button>
-              <button
-                onClick={() => setInput('Show me the top free agent pitchers')}
-                className="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors"
-              >
-                Top free agent pitchers
-              </button>
-              <button
-                onClick={() => setInput('What are my roster weaknesses?')}
-                className="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full transition-colors"
-              >
-                Roster weaknesses
               </button>
             </div>
           </div>

@@ -6,7 +6,7 @@
 // Configuration
 const API_BASE_URL = window.location.hostname === 'localhost'
     ? 'http://localhost:8000/api'
-    : 'https://chatbot.razzball.com/api';
+    : 'https://valiant-healing-production-ce05.up.railway.app/api';
 
 // Admin credentials (in production, use proper authentication)
 const ADMIN_CREDENTIALS = {
