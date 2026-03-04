@@ -625,7 +625,7 @@ async def chat(
                 # Determine active hitter cats
                 h_cats = [c for c in active_cats if c in HITTER_CATS]
                 lines.append(f"**Hitters ({len(hitters)})**\n")
-                h_header = ['Name', 'Pos', 'Team', '$']
+                h_header = ['Name', 'Pos', 'Team', '$', '$/G']
                 for cat in h_cats:
                     h_header.append(f'${cat}')
                 lines.append('| ' + ' | '.join(h_header) + ' |')
@@ -634,7 +634,7 @@ async def chat(
                 # Parse each hitter's data from the player string
                 hitter_rows = []
                 for p_str in hitters:
-                    # Format: "Name | Pos: SP | Team: NYY | $12.3 $R:1.2 $HR:3.4 ..."
+                    # Format: "Name | Pos: SP | Team: NYY | $12.3 $/G:5.2 $R:1.2 $HR:3.4 ..."
                     parts = p_str.split(' | ')
                     name = parts[0] if len(parts) > 0 else '?'
                     pos = parts[1].replace('Pos: ', '') if len(parts) > 1 else '?'
@@ -645,13 +645,17 @@ async def chat(
                     overall_match = _re.search(r'^\$(-?[\d.]+)', dollar_part)
                     overall = float(overall_match.group(1)) if overall_match else 0.0
 
+                    # Extract $/G
+                    pg_match = _re.search(r'\$/G:(-?[\d.]+)', dollar_part)
+                    per_game = pg_match.group(1) if pg_match else ''
+
                     # Extract category values
                     cat_vals = {}
                     for cat in h_cats:
                         cat_match = _re.search(rf'\${cat}:(-?[\d.]+)', dollar_part)
                         cat_vals[cat] = cat_match.group(1) if cat_match else '0'
 
-                    row = [name, pos, team, str(overall)]
+                    row = [name, pos, team, str(overall), per_game]
                     for cat in h_cats:
                         row.append(cat_vals[cat])
                     hitter_rows.append((overall, '| ' + ' | '.join(row) + ' |'))
@@ -666,7 +670,7 @@ async def chat(
             if pitchers:
                 p_cats = [c for c in active_cats if c in PITCHER_CATS]
                 lines.append(f"\n**Pitchers ({len(pitchers)})**\n")
-                p_header = ['Name', 'Pos', 'Team', '$']
+                p_header = ['Name', 'Pos', 'Team', '$', '$/G']
                 for cat in p_cats:
                     p_header.append(f'${cat}')
                 lines.append('| ' + ' | '.join(p_header) + ' |')
@@ -683,12 +687,16 @@ async def chat(
                     overall_match = _re.search(r'^\$(-?[\d.]+)', dollar_part)
                     overall = float(overall_match.group(1)) if overall_match else 0.0
 
+                    # Extract $/G
+                    pg_match = _re.search(r'\$/G:(-?[\d.]+)', dollar_part)
+                    per_game = pg_match.group(1) if pg_match else ''
+
                     cat_vals = {}
                     for cat in p_cats:
                         cat_match = _re.search(rf'\${cat}:(-?[\d.]+)', dollar_part)
                         cat_vals[cat] = cat_match.group(1) if cat_match else '0'
 
-                    row = [name, pos, team, str(overall)]
+                    row = [name, pos, team, str(overall), per_game]
                     for cat in p_cats:
                         row.append(cat_vals[cat])
                     pitcher_rows.append((overall, '| ' + ' | '.join(row) + ' |'))
@@ -831,14 +839,29 @@ async def chat(
             lines = []
             lines.append(f"**{label} Pickups ({requested_type})**\n")
 
-            # Use actual projection stats, not dollar-category breakdowns
-            # Hitter columns: G, PA, R, HR, RBI, SB, AVG, OBP, SLG
-            # Pitcher columns: GS, QS, W, L, IP, K, ERA, WHIP
-            h_stat_cols = ['G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG']
-            p_stat_cols = ['GS', 'QS', 'W', 'L', 'IP', 'K', 'ERA', 'WHIP']
+            # Use actual projection stats from the API data
+            # Hitter columns matching Rudy's SQL: Opp, $, G, PA, R, HR, RBI, SB, AVG, OBP, SLG, R%, ROS12, $/G, ROS15, RFS12, RFS15, Games, H/A
+            h_stat_cols = ['Opp', 'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG']
+            p_stat_cols = ['Opp', 'GS', 'QS', 'W', 'L', 'IP', 'H_Pitch', 'K', 'ERA', 'WHIP']
 
-            # Also add ROS context columns if available
-            ros_cols = ['ROS12', '$/G', 'ROS15']
+            # Context/ROS columns
+            ros_cols = ['R%', '$ROS12$', 'ROS12 $/G', '$ROS15$', 'RFS12', 'RFS15', 'Team_Games', 'H/A']
+            # Alternative column name mappings (API might use different names)
+            col_aliases = {
+                'K': ['SO_Pitch', 'K'],
+                'H_Pitch': ['H_Pitch', 'H_pitch'],
+                '$ROS12$': ['$ROS12$', 'ROS12'],
+                'ROS12 $/G': ['ROS12 $/G', '$/G'],
+                '$ROS15$': ['$ROS15$', 'ROS15'],
+                'R%': ['R%'],
+                'Team_Games': ['Team_Games', 'Games'],
+            }
+            # Display name overrides
+            col_display = {
+                '$ROS12$': 'ROS12', 'ROS12 $/G': '$/G', '$ROS15$': 'ROS15',
+                'Team_Games': 'Games', 'H_Pitch': 'H',
+                'SO_Pitch': 'K',
+            }
 
             for group_name, players in position_groups.items():
                 if not players:
@@ -854,41 +877,65 @@ async def chat(
                 lines.append(f"\n**{group_name} ({len(players)} available, showing top {len(top)})**\n")
                 header = ['Name', 'Pos', 'Team', '$']
                 # Only include stat columns that actually exist in the data
-                available_stats = []
+                available_stats = []  # list of (display_name, actual_col_name)
                 sample_row = top[0]['row'] if top else None
+                sample_keys = set(dict(sample_row).keys()) if sample_row is not None else set()
+
                 if sample_row is not None:
                     for col in stat_cols:
-                        # Check multiple possible column names
-                        if col in sample_row.index or col in dict(sample_row).keys():
-                            available_stats.append(col)
-                        elif col == 'K' and ('SO_Pitch' in sample_row.index or 'SO_Pitch' in dict(sample_row).keys()):
-                            available_stats.append('K')  # map SO_Pitch -> K
-                    # Add ROS columns if available
+                        # Check aliases for this column
+                        aliases = col_aliases.get(col, [col])
+                        found_col = None
+                        for alias in aliases:
+                            if alias in sample_keys:
+                                found_col = alias
+                                break
+                        if found_col:
+                            display = col_display.get(found_col, col_display.get(col, col))
+                            available_stats.append((display, found_col))
+                    # Add ROS/context columns if available
                     for col in ros_cols:
-                        if col in sample_row.index or col in dict(sample_row).keys():
-                            available_stats.append(col)
-                else:
-                    available_stats = stat_cols
+                        aliases = col_aliases.get(col, [col])
+                        found_col = None
+                        for alias in aliases:
+                            if alias in sample_keys:
+                                found_col = alias
+                                break
+                        if found_col:
+                            display = col_display.get(found_col, col_display.get(col, col))
+                            available_stats.append((display, found_col))
 
-                for col in available_stats:
-                    header.append(col)
+                    # Build H/A from Team_HomeGames/Team_AwayGames if H/A not directly available
+                    if not any(d == 'H/A' for d, _ in available_stats):
+                        if 'Team_HomeGames' in sample_keys and 'Team_AwayGames' in sample_keys:
+                            available_stats.append(('H/A', '_computed_ha'))
+
+                for display, _ in available_stats:
+                    header.append(display)
                 lines.append('| ' + ' | '.join(header) + ' |')
                 lines.append('|' + '---|' * len(header))
 
                 for fa in top:
                     row_data = fa['row']
                     row_parts = [fa['name'], fa['pos'], fa['team'], str(round(fa['dollar'], 1))]
-                    for col in available_stats:
-                        # Handle K -> SO_Pitch mapping
-                        actual_col = col
-                        if col == 'K' and col not in dict(row_data).keys() and 'SO_Pitch' in dict(row_data).keys():
-                            actual_col = 'SO_Pitch'
-                        val = row_data.get(actual_col, '')
-                        # Format: 3 decimals for rate stats, int for counting stats
-                        if col in ('AVG', 'OBP', 'SLG', 'ERA', 'WHIP'):
-                            row_parts.append(fmt_stat(val, 3))
+                    for display, actual_col in available_stats:
+                        if actual_col == '_computed_ha':
+                            # Compute H/A from home/away games
+                            h_games = row_data.get('Team_HomeGames', '')
+                            a_games = row_data.get('Team_AwayGames', '')
+                            if str(h_games) not in ('nan', 'None', '') and str(a_games) not in ('nan', 'None', ''):
+                                row_parts.append(f"{fmt_stat(h_games)}/{fmt_stat(a_games)}")
+                            else:
+                                row_parts.append('')
                         else:
-                            row_parts.append(fmt_stat(val))
+                            val = row_data.get(actual_col, '')
+                            # Format: 3 decimals for rate stats
+                            if display in ('AVG', 'OBP', 'SLG', 'ERA', 'WHIP'):
+                                row_parts.append(fmt_stat(val, 3))
+                            elif display == 'Opp':
+                                row_parts.append(str(val) if str(val) not in ('nan', 'None') else '')
+                            else:
+                                row_parts.append(fmt_stat(val))
                     lines.append('| ' + ' | '.join(row_parts) + ' |')
 
             return "\n".join(lines)

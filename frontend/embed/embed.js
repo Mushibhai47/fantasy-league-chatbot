@@ -14,6 +14,7 @@ const state = {
     leagueId: null,
     userId: null,  // For tracking message limits
     userEmail: null,
+    selectedTeam: null,  // Selected team name for quick actions
     conversationHistory: [],
     messagesRemaining: null,
     monthlyLimit: 100
@@ -76,23 +77,54 @@ function setupEventListeners() {
         }
     });
 
-    // Quick action buttons
-    document.querySelectorAll('.quick-action-btn').forEach(btn => {
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const query = e.target.closest('.quick-action-btn').dataset.query;
-            const qLower = query.toLowerCase();
-            // If team overview or weekly start/sit, prompt for team name
-            if (qLower.startsWith('team overview') || qLower.startsWith('weekly start')) {
-                const teamName = prompt('Enter team/owner name:');
-                if (teamName && teamName.trim()) {
-                    document.getElementById('chat-input').value = query + ' ' + teamName.trim();
-                    handleSendMessage();
-                }
-            } else {
-                document.getElementById('chat-input').value = query;
-                handleSendMessage();
-            }
+            const tab = e.target.dataset.tab;
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(tc => tc.style.display = 'none');
+            // Show selected
+            const tabEl = document.getElementById('tab-' + tab);
+            if (tabEl) tabEl.style.display = 'flex';
+            // Update active tab styling
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.style.background = '#f0f0f0';
+                b.style.color = '#333';
+            });
+            e.target.style.background = '#1a3a5c';
+            e.target.style.color = 'white';
         });
+    });
+
+    // Quick action buttons (non-tab)
+    document.querySelectorAll('.quick-action-btn:not(.tab-btn)').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            let query = e.target.closest('.quick-action-btn').dataset.query;
+            if (!query) return;
+
+            // Replace {team} placeholder with selected team
+            if (query.includes('{team}')) {
+                const team = state.selectedTeam;
+                if (!team) {
+                    const teamName = prompt('Enter team/owner name:');
+                    if (!teamName || !teamName.trim()) return;
+                    query = query.replace('{team}', teamName.trim());
+                } else {
+                    query = query.replace('{team}', team);
+                }
+            }
+
+            document.getElementById('chat-input').value = query;
+            handleSendMessage();
+        });
+    });
+
+    // Team selector
+    document.getElementById('team-selector')?.addEventListener('change', (e) => {
+        state.selectedTeam = e.target.value || null;
+        if (state.selectedTeam) {
+            localStorage.setItem('razzball_selected_team', state.selectedTeam);
+        }
     });
 
     // Settings modal
@@ -141,12 +173,24 @@ function loadSavedData() {
         localStorage.setItem('razzball_user_id', savedUserId);
     }
     state.userId = savedUserId;
+
+    // Load saved team selection
+    const savedTeam = localStorage.getItem('razzball_selected_team');
+    if (savedTeam) {
+        state.selectedTeam = savedTeam;
+    }
 }
 
 function showAppropriateScreen() {
     if (state.leagueId) {
-        // Has league data - go straight to chat
-        showChatScreen();
+        if (state.selectedTeam) {
+            // Has league + team selected - go straight to chat
+            showChatScreen();
+        } else {
+            // Has league but no team - show team selector
+            loadTeamsForSelector();
+            showSetupScreen('ready');
+        }
     } else {
         // No league data - show upload (API key is now optional)
         showSetupScreen('upload');
@@ -178,6 +222,38 @@ function showChatScreen() {
         updateMessageCounter(null); // Unlimited
     } else {
         updateMessageCounter(state.messagesRemaining || state.monthlyLimit); // Show default or saved value
+    }
+}
+
+function populateTeamSelector(teams) {
+    const selector = document.getElementById('team-selector');
+    if (!selector) return;
+
+    // Clear existing options (keep the default)
+    selector.innerHTML = '<option value="">-- Select your team --</option>';
+
+    teams.forEach(team => {
+        const opt = document.createElement('option');
+        opt.value = team;
+        opt.textContent = team;
+        // Pre-select if previously saved
+        if (state.selectedTeam === team) {
+            opt.selected = true;
+        }
+        selector.appendChild(opt);
+    });
+}
+
+async function loadTeamsForSelector() {
+    if (!state.leagueId) return;
+    try {
+        const response = await fetch(`${API_BASE_URL}/csv/${state.leagueId}/teams`);
+        if (response.ok) {
+            const data = await response.json();
+            populateTeamSelector(data.teams);
+        }
+    } catch (e) {
+        console.warn('Could not fetch teams:', e);
     }
 }
 
@@ -261,6 +337,17 @@ async function uploadFile(file) {
         localStorage.setItem('razzball_league_id', data.id);
 
         showStatus(statusEl, `✅ Success! Loaded ${data.total_players} players from your league`, 'success');
+
+        // Fetch team names for the selector
+        try {
+            const teamsResponse = await fetch(`${API_BASE_URL}/csv/${data.id}/teams`);
+            if (teamsResponse.ok) {
+                const teamsData = await teamsResponse.json();
+                populateTeamSelector(teamsData.teams);
+            }
+        } catch (e) {
+            console.warn('Could not fetch teams:', e);
+        }
 
         setTimeout(() => {
             showSetupScreen('ready');

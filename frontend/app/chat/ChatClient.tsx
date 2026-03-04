@@ -27,6 +27,8 @@ export default function ChatClient() {
   const [freeAgents, setFreeAgents] = useState<Player[]>([]);
   const [showRoster, setShowRoster] = useState(false);
   const [activeTab, setActiveTab] = useState<'today' | 'tomorrow' | 'weekly'>('today');
+  const [teamNames, setTeamNames] = useState<string[]>([]);
+  const [selectedTeam, setSelectedTeam] = useState<string>(ownerName || '');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export default function ChatClient() {
       return;
     }
 
-    // Load roster and free agents
+    // Load roster, free agents, and team names
     const loadData = async () => {
       try {
         const [rosterData, faData] = await Promise.all([
@@ -44,6 +46,10 @@ export default function ChatClient() {
         ]);
         setRoster(rosterData.players);
         setFreeAgents(faData.players);
+
+        // Extract unique team names from roster
+        const owners = new Set(rosterData.players.map((p: Player) => p.owner).filter((o: string) => o && o !== 'Free Agent'));
+        setTeamNames(Array.from(owners).sort());
       } catch (err) {
         console.error('Error loading data:', err);
       }
@@ -119,7 +125,7 @@ export default function ChatClient() {
   }
 
   // Build team identifier for quick actions
-  const teamId = ownerName || 'my team';
+  const teamId = selectedTeam || ownerName || 'my team';
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -133,7 +139,19 @@ export default function ChatClient() {
               {ownerName && ` \u2022 ${ownerName}`}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            {teamNames.length > 0 && (
+              <select
+                value={selectedTeam}
+                onChange={(e) => setSelectedTeam(e.target.value)}
+                className="bg-white/20 text-white border border-white/30 rounded px-2 py-1 text-sm"
+              >
+                <option value="" className="text-gray-900">Select Team</option>
+                {teamNames.map((t) => (
+                  <option key={t} value={t} className="text-gray-900">{t}</option>
+                ))}
+              </select>
+            )}
             <button
               onClick={() => setShowRoster(!showRoster)}
               className="btn-secondary"

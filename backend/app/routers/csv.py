@@ -161,6 +161,25 @@ async def get_roster(
     )
 
 
+@router.get("/{league_id}/teams")
+async def get_teams(
+    league_id: uuid.UUID,
+    db: Session = Depends(get_db)
+):
+    """Get list of team owner names in a league (excludes Free Agent)"""
+    league = db.query(League).filter(League.id == league_id).first()
+    if not league:
+        raise HTTPException(status_code=404, detail="League not found")
+
+    rosters = db.query(Roster.team_owner).filter(
+        Roster.league_id == league_id,
+        Roster.team_owner != 'Free Agent'
+    ).distinct().all()
+
+    teams = sorted(set(r.team_owner for r in rosters if r.team_owner))
+    return {"league_id": str(league_id), "teams": teams}
+
+
 @router.get("/{league_id}/free-agents", response_model=RosterResponse)
 async def get_free_agents(
     league_id: uuid.UUID,

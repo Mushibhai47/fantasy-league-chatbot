@@ -51,10 +51,15 @@
                 </div>
 
                 <div class="setup-step" id="step-ready" style="display: none;">
-                    <h2>✅ All Set!</h2>
+                    <h2>Select Your Team</h2>
                     <p class="step-description">
-                        Your API key is saved and your roster is loaded. Click below to start chatting!
+                        Your roster is loaded! Choose your team so buttons work automatically.
                     </p>
+                    <div class="input-group" style="margin-bottom: 12px;">
+                        <select id="team-selector" style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; width: 100%; background: white;">
+                            <option value="">-- Select your team --</option>
+                        </select>
+                    </div>
                     <button id="start-chat-btn" class="btn btn-primary btn-large">Start Chatting</button>
                 </div>
             </div>
@@ -101,27 +106,27 @@
             <div id="message-counter" style="display: none; text-align: center; padding: 8px; font-size: 13px; color: #666;"></div>
 
             <div class="quick-actions">
-                <button class="quick-action-btn" data-query="league overview MLB12">
-                    📋 League MLB12
-                </button>
-                <button class="quick-action-btn" data-query="league overview MLB15">
-                    📋 League MLB15
-                </button>
-                <button class="quick-action-btn" data-query="team overview MLB12">
-                    👤 Team MLB12
-                </button>
-                <button class="quick-action-btn" data-query="team overview MLB15">
-                    👤 Team MLB15
-                </button>
-                <button class="quick-action-btn" data-query="weekly start/sit MLB12">
-                    📅 Start/Sit MLB12
-                </button>
-                <button class="quick-action-btn" data-query="weekly pickups MLB12">
-                    🔍 Pickups MLB12
-                </button>
-                <button class="quick-action-btn" data-query="daily pickups MLB12">
-                    📆 Daily MLB12
-                </button>
+                <div style="display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap;">
+                    <button class="quick-action-btn tab-btn" data-tab="today" style="background: #1a3a5c; color: white;">Today</button>
+                    <button class="quick-action-btn tab-btn" data-tab="tomorrow">Tomorrow</button>
+                    <button class="quick-action-btn tab-btn" data-tab="weekly">Weekly</button>
+                </div>
+                <div id="tab-today" class="tab-content">
+                    <button class="quick-action-btn team-action" data-query="today start/sit {team}">Today Start/Sit</button>
+                    <button class="quick-action-btn" data-query="today pickups">Today Pickups</button>
+                </div>
+                <div id="tab-tomorrow" class="tab-content" style="display: none;">
+                    <button class="quick-action-btn team-action" data-query="tomorrow start/sit {team}">Tomorrow Start/Sit</button>
+                    <button class="quick-action-btn" data-query="tomorrow pickups">Tomorrow Pickups</button>
+                </div>
+                <div id="tab-weekly" class="tab-content" style="display: none;">
+                    <button class="quick-action-btn team-action" data-query="weekly start/sit {team}">Weekly Start/Sit</button>
+                    <button class="quick-action-btn" data-query="weekly pickups">Weekly Pickups</button>
+                </div>
+                <div style="margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;">
+                    <button class="quick-action-btn" data-query="league overview">League Overview</button>
+                    <button class="quick-action-btn team-action" data-query="team overview {team}">My Team</button>
+                </div>
             </div>
         </div>
 
