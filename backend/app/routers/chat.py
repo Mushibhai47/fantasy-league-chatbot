@@ -801,25 +801,44 @@ async def chat(
 
             for fa in fa_rows:
                 pos = fa['pos'].upper()
-                if pos == 'C':
+                placed = False
+                # Use CONTAINS matching so "2B/OF" maps to both groups
+                if 'C' == pos:  # Exact for C to avoid matching CF
                     position_groups['C'].append(fa)
-                elif pos in ('1B', '3B'):
+                    placed = True
+                if '1B' in pos or '3B' in pos:
                     position_groups['1B/3B'].append(fa)
-                elif pos in ('2B', 'SS'):
+                    placed = True
+                if '2B' in pos or 'SS' in pos:
                     position_groups['2B/SS'].append(fa)
-                elif pos in ('OF', 'DH', 'LF', 'RF', 'CF'):
+                    placed = True
+                if 'OF' in pos or 'DH' in pos or 'LF' in pos or 'RF' in pos or 'CF' in pos:
                     position_groups['OF/DH'].append(fa)
-                elif pos == 'SP':
+                    placed = True
+                if pos == 'SP' or (pos == 'P' and 'RP' not in pos):
                     position_groups['SP'].append(fa)
-                elif pos == 'RP':
+                    placed = True
+                if 'RP' in pos:
                     position_groups['RP'].append(fa)
+                    placed = True
+                # Fallback: if no group matched, try to place by first position token
+                if not placed:
+                    if pos in ('P',):
+                        position_groups['SP'].append(fa)
+                    else:
+                        position_groups['OF/DH'].append(fa)  # default bucket
 
             lines = []
             lines.append(f"**{label} Pickups ({requested_type})**\n")
 
-            # Determine which categories to show per group
-            h_cats = [c for c in active_cats if c in HITTER_CATS]
-            p_cats = [c for c in active_cats if c in PITCHER_CATS]
+            # Use actual projection stats, not dollar-category breakdowns
+            # Hitter columns: G, PA, R, HR, RBI, SB, AVG, OBP, SLG
+            # Pitcher columns: GS, QS, W, L, IP, K, ERA, WHIP
+            h_stat_cols = ['G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG']
+            p_stat_cols = ['GS', 'QS', 'W', 'L', 'IP', 'K', 'ERA', 'WHIP']
+
+            # Also add ROS context columns if available
+            ros_cols = ['ROS12', '$/G', 'ROS15']
 
             for group_name, players in position_groups.items():
                 if not players:
@@ -829,26 +848,47 @@ async def chat(
                 top = players[:10]  # Top 10 per position
 
                 is_pitcher_group = group_name in ('SP', 'RP')
-                cats = p_cats if is_pitcher_group else h_cats
+                stat_cols = p_stat_cols if is_pitcher_group else h_stat_cols
 
+                # Build header with available columns
                 lines.append(f"\n**{group_name} ({len(players)} available, showing top {len(top)})**\n")
                 header = ['Name', 'Pos', 'Team', '$']
-                for cat in cats:
-                    header.append(f'${cat}')
+                # Only include stat columns that actually exist in the data
+                available_stats = []
+                sample_row = top[0]['row'] if top else None
+                if sample_row is not None:
+                    for col in stat_cols:
+                        # Check multiple possible column names
+                        if col in sample_row.index or col in dict(sample_row).keys():
+                            available_stats.append(col)
+                        elif col == 'K' and ('SO_Pitch' in sample_row.index or 'SO_Pitch' in dict(sample_row).keys()):
+                            available_stats.append('K')  # map SO_Pitch -> K
+                    # Add ROS columns if available
+                    for col in ros_cols:
+                        if col in sample_row.index or col in dict(sample_row).keys():
+                            available_stats.append(col)
+                else:
+                    available_stats = stat_cols
+
+                for col in available_stats:
+                    header.append(col)
                 lines.append('| ' + ' | '.join(header) + ' |')
                 lines.append('|' + '---|' * len(header))
 
                 for fa in top:
                     row_data = fa['row']
                     row_parts = [fa['name'], fa['pos'], fa['team'], str(round(fa['dollar'], 1))]
-                    for cat in cats:
-                        cat_key = f'${cat}$'
-                        val = row_data.get(cat_key, 0)
-                        try:
-                            val = round(float(val), 1) if str(val) not in ('nan', 'None', '') else 0.0
-                        except (ValueError, TypeError):
-                            val = 0.0
-                        row_parts.append(str(val))
+                    for col in available_stats:
+                        # Handle K -> SO_Pitch mapping
+                        actual_col = col
+                        if col == 'K' and col not in dict(row_data).keys() and 'SO_Pitch' in dict(row_data).keys():
+                            actual_col = 'SO_Pitch'
+                        val = row_data.get(actual_col, '')
+                        # Format: 3 decimals for rate stats, int for counting stats
+                        if col in ('AVG', 'OBP', 'SLG', 'ERA', 'WHIP'):
+                            row_parts.append(fmt_stat(val, 3))
+                        else:
+                            row_parts.append(fmt_stat(val))
                     lines.append('| ' + ' | '.join(row_parts) + ' |')
 
             return "\n".join(lines)
@@ -927,23 +967,57 @@ async def chat(
 
                     is_pitcher = pos.upper() in ('SP', 'RP', 'P')
 
+                    # ROS context columns
+                    ros_row_w = ros_lookup.get(match_id)
+                    ros12 = ''
+                    ros_pg = ''
+                    ros15 = ''
+                    if ros_row_w is not None:
+                        rd = ros_row_w.get('$', '')
+                        if str(rd) not in ('nan', 'None', ''):
+                            ros12 = fmt_stat(rd)
+                        rpg = ros_row_w.get('$/G$', '')
+                        if str(rpg) not in ('nan', 'None', ''):
+                            ros_pg = fmt_stat(rpg)
+                        r15 = ros_row_w.get('$ROS15$', weekly_row.get('ROS15', ''))
+                        if str(r15) not in ('nan', 'None', ''):
+                            ros15 = fmt_stat(r15)
+                    # Also check weekly row for ROS columns directly
+                    if not ros12:
+                        r12_w = weekly_row.get('ROS12', '')
+                        if str(r12_w) not in ('nan', 'None', ''):
+                            ros12 = fmt_stat(r12_w)
+                    if not ros_pg:
+                        rpg_w = weekly_row.get('$/G', '')
+                        if str(rpg_w) not in ('nan', 'None', ''):
+                            ros_pg = fmt_stat(rpg_w)
+                    if not ros15:
+                        r15_w = weekly_row.get('ROS15', '')
+                        if str(r15_w) not in ('nan', 'None', ''):
+                            ros15 = fmt_stat(r15_w)
+
                     if is_pitcher:
                         pitcher_rows.append((dollar, [
                             name, pos, team, opp, str(round(dollar, 1)),
                             fmt_stat(weekly_row.get('GS', '')), fmt_stat(weekly_row.get('QS', '')),
                             fmt_stat(weekly_row.get('W', '')), fmt_stat(weekly_row.get('L', '')),
                             fmt_stat(weekly_row.get('IP', '')),
+                            fmt_stat(weekly_row.get('H_Pitch', weekly_row.get('H_pitch', ''))),
                             fmt_stat(weekly_row.get('SO_Pitch', weekly_row.get('K', ''))),
-                            fmt_stat(weekly_row.get('ERA', '')), fmt_stat(weekly_row.get('WHIP', '')),
+                            fmt_stat(weekly_row.get('ERA', ''), 2), fmt_stat(weekly_row.get('WHIP', ''), 2),
+                            ros12, ros_pg, ros15,
                             fmt_stat(team_games), home_away
                         ]))
                     else:
                         hitter_rows.append((dollar, [
                             name, pos, team, opp, str(round(dollar, 1)),
                             str(games),
+                            fmt_stat(weekly_row.get('PA', '')),
                             fmt_stat(weekly_row.get('R', '')), fmt_stat(weekly_row.get('HR', '')),
                             fmt_stat(weekly_row.get('RBI', '')), fmt_stat(weekly_row.get('SB', '')),
                             fmt_stat(weekly_row.get('AVG', ''), 3), fmt_stat(weekly_row.get('OBP', ''), 3),
+                            fmt_stat(weekly_row.get('SLG', ''), 3),
+                            ros12, ros_pg, ros15,
                             fmt_stat(team_games), home_away
                         ]))
                 else:
@@ -980,7 +1054,7 @@ async def chat(
             # Hitters table
             if hitter_rows:
                 lines.append(f"**Hitters ({len(hitter_rows)})**\n")
-                h_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'G', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'Games', 'H/A']
+                h_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG', 'ROS12', '$/G', 'ROS15', 'Games', 'H/A']
                 lines.append('| ' + ' | '.join(h_header) + ' |')
                 lines.append('|' + '---|' * len(h_header))
                 for _, row_data in hitter_rows:
@@ -989,7 +1063,7 @@ async def chat(
             # Pitchers table
             if pitcher_rows:
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
-                p_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'GS', 'QS', 'W', 'L', 'IP', 'K', 'ERA', 'WHIP', 'Games', 'H/A']
+                p_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'GS', 'QS', 'W', 'L', 'IP', 'H', 'K', 'ERA', 'WHIP', 'ROS12', '$/G', 'ROS15', 'Games', 'H/A']
                 lines.append('| ' + ' | '.join(p_header) + ' |')
                 lines.append('|' + '---|' * len(p_header))
                 for _, row_data in pitcher_rows:
@@ -1254,15 +1328,7 @@ async def chat(
                 logger.warning(f"Could not save chat: {e}")
                 db.rollback()
 
-            # Increment message usage
-            if not request.user_api_key:
-                try:
-                    user_id = request.user_id or str(request.league_id)
-                    user = MessageLimitService.get_or_create_user(user_id, db)
-                    MessageLimitService.increment_usage(user, db)
-                    messages_remaining = user.monthly_limit - user.messages_used
-                except Exception as e:
-                    logger.warning(f"Could not increment usage: {e}")
+            # Hard-coded reports do NOT count against message limits
 
             return ChatResponse(
                 message=request.message,
@@ -1310,14 +1376,7 @@ async def chat(
                 logger.warning(f"Could not save chat: {e}")
                 db.rollback()
 
-            if not request.user_api_key:
-                try:
-                    user_id = request.user_id or str(request.league_id)
-                    user = MessageLimitService.get_or_create_user(user_id, db)
-                    MessageLimitService.increment_usage(user, db)
-                    messages_remaining = user.monthly_limit - user.messages_used
-                except Exception as e:
-                    logger.warning(f"Could not increment usage: {e}")
+            # Hard-coded reports do NOT count against message limits
 
             return ChatResponse(
                 message=request.message,
@@ -1362,14 +1421,7 @@ async def chat(
                 logger.warning(f"Could not save chat: {e}")
                 db.rollback()
 
-            if not request.user_api_key:
-                try:
-                    user_id = request.user_id or str(request.league_id)
-                    user = MessageLimitService.get_or_create_user(user_id, db)
-                    MessageLimitService.increment_usage(user, db)
-                    messages_remaining = user.monthly_limit - user.messages_used
-                except Exception as e:
-                    logger.warning(f"Could not increment usage: {e}")
+            # Hard-coded reports do NOT count against message limits
 
             return ChatResponse(
                 message=request.message,
@@ -1416,14 +1468,7 @@ async def chat(
                 logger.warning(f"Could not save chat: {e}")
                 db.rollback()
 
-            if not request.user_api_key:
-                try:
-                    user_id = request.user_id or str(request.league_id)
-                    user = MessageLimitService.get_or_create_user(user_id, db)
-                    MessageLimitService.increment_usage(user, db)
-                    messages_remaining = user.monthly_limit - user.messages_used
-                except Exception as e:
-                    logger.warning(f"Could not increment usage: {e}")
+            # Hard-coded reports do NOT count against message limits
 
             return ChatResponse(
                 message=request.message,
@@ -1460,14 +1505,7 @@ async def chat(
                 logger.warning(f"Could not save chat: {e}")
                 db.rollback()
 
-            if not request.user_api_key:
-                try:
-                    user_id = request.user_id or str(request.league_id)
-                    user = MessageLimitService.get_or_create_user(user_id, db)
-                    MessageLimitService.increment_usage(user, db)
-                    messages_remaining = user.monthly_limit - user.messages_used
-                except Exception as e:
-                    logger.warning(f"Could not increment usage: {e}")
+            # Hard-coded reports do NOT count against message limits
 
             return ChatResponse(
                 message=request.message,
