@@ -707,6 +707,103 @@ async def chat(
 
             return "\n".join(lines)
 
+        def _clean_str(v) -> str:
+            """Return string value or empty string for nan/None"""
+            s = str(v)
+            return '' if s in ('nan', 'None') else s
+
+        def _fmt_ts(v) -> str:
+            """Format API timestamp (Excel serial or ISO string) to readable date"""
+            s = str(v)
+            if s in ('nan', 'None', ''):
+                return ''
+            try:
+                f = float(s)
+                # Excel serial date (days since 1899-12-30)
+                from datetime import datetime, timedelta
+                dt = datetime(1899, 12, 30) + timedelta(days=f)
+                return dt.strftime('%Y-%m-%d %H:%M:%S')
+            except (ValueError, TypeError):
+                return s  # Already a string
+
+        def _get_ha(row) -> str:
+            h = row.get('Team_HomeGames', '')
+            a = row.get('Team_AwayGames', '')
+            if _clean_str(h) and _clean_str(a):
+                return f"{fmt_stat(h)}/{fmt_stat(a)}"
+            return _clean_str(row.get('H/A', ''))
+
+        def _get_rl_weekly(row) -> str:
+            r = row.get('Team_vR_Games', '')
+            l = row.get('Team_vL_Games', '')
+            if _clean_str(r) and _clean_str(l):
+                return f"{fmt_stat(r)}/{fmt_stat(l)}"
+            return ''
+
+        def _get_wof(row) -> str:
+            v = row.get('Week of', '')
+            if str(v) in ('nan', 'None', ''):
+                return ''
+            try:
+                f = float(str(v))
+                from datetime import datetime, timedelta
+                dt = datetime(1899, 12, 30) + timedelta(days=f)
+                return dt.strftime('%m/%d/%Y')
+            except (ValueError, TypeError):
+                return str(v)
+
+        def _get_date_str(row) -> str:
+            v = row.get('Date', '')
+            if str(v) in ('nan', 'None', ''):
+                return ''
+            try:
+                d = pd.to_datetime(v, errors='coerce')
+                return d.strftime('%Y-%m-%d') if not pd.isnull(d) else str(v)
+            except Exception:
+                return str(v)
+
+        def _weekly_ros12(row) -> str:
+            for k in ('$ROS12$', 'ROS12'):
+                v = row.get(k, '')
+                if _clean_str(v):
+                    return fmt_stat(v)
+            return ''
+
+        def _weekly_ros_pg(row) -> str:
+            for k in ('ROS12 $/G', '$/G'):
+                v = row.get(k, '')
+                if _clean_str(v):
+                    return fmt_stat(v)
+            return ''
+
+        def _weekly_ros15(row) -> str:
+            for k in ('$ROS15$', 'ROS15'):
+                v = row.get(k, '')
+                if _clean_str(v):
+                    return fmt_stat(v)
+            return ''
+
+        def _daily_ros12(row) -> str:
+            for k in ('$ROS12$', 'ROS12'):
+                v = row.get(k, '')
+                if _clean_str(v):
+                    return fmt_stat(v)
+            return ''
+
+        def _daily_ros_pg(row) -> str:
+            for k in ('ROS12 $/G', '$/G'):
+                v = row.get(k, '')
+                if _clean_str(v):
+                    return fmt_stat(v)
+            return ''
+
+        def _daily_ros15(row) -> str:
+            for k in ('$ROS15$', 'ROS15'):
+                v = row.get(k, '')
+                if _clean_str(v):
+                    return fmt_stat(v)
+            return ''
+
         def generate_pickups_report(projection_type: str, use_tomorrow: bool = False) -> str:
             """Generate Weekly/Daily Pickups - best available FAs by position"""
             global _weekly_projections_df, _daily_projections_df
@@ -810,8 +907,7 @@ async def chat(
             for fa in fa_rows:
                 pos = fa['pos'].upper()
                 placed = False
-                # Use CONTAINS matching so "2B/OF" maps to both groups
-                if 'C' == pos:  # Exact for C to avoid matching CF
+                if 'C' == pos:
                     position_groups['C'].append(fa)
                     placed = True
                 if '1B' in pos or '3B' in pos:
@@ -829,114 +925,204 @@ async def chat(
                 if 'RP' in pos:
                     position_groups['RP'].append(fa)
                     placed = True
-                # Fallback: if no group matched, try to place by first position token
                 if not placed:
                     if pos in ('P',):
                         position_groups['SP'].append(fa)
                     else:
-                        position_groups['OF/DH'].append(fa)  # default bucket
+                        position_groups['OF/DH'].append(fa)
 
             lines = []
             lines.append(f"**{label} Pickups ({requested_type})**\n")
 
-            # Use actual projection stats from the API data
-            # Hitter columns matching Rudy's SQL: Opp, $, G, PA, R, HR, RBI, SB, AVG, OBP, SLG, R%, ROS12, $/G, ROS15, RFS12, RFS15, Games, H/A
-            h_stat_cols = ['Opp', 'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG']
-            p_stat_cols = ['Opp', 'GS', 'QS', 'W', 'L', 'IP', 'H_Pitch', 'K', 'ERA', 'WHIP']
-
-            # Context/ROS columns
-            ros_cols = ['R%', '$ROS12$', 'ROS12 $/G', '$ROS15$', 'RFS12', 'RFS15', 'Team_Games', 'H/A']
-            # Alternative column name mappings (API might use different names)
-            col_aliases = {
-                'K': ['SO_Pitch', 'K'],
-                'H_Pitch': ['H_Pitch', 'H_pitch'],
-                '$ROS12$': ['$ROS12$', 'ROS12'],
-                'ROS12 $/G': ['ROS12 $/G', '$/G'],
-                '$ROS15$': ['$ROS15$', 'ROS15'],
-                'R%': ['R%'],
-                'Team_Games': ['Team_Games', 'Games'],
-            }
-            # Display name overrides
-            col_display = {
-                '$ROS12$': 'ROS12', 'ROS12 $/G': '$/G', '$ROS15$': 'ROS15',
-                'Team_Games': 'Games', 'H_Pitch': 'H',
-                'SO_Pitch': 'K',
-            }
-
             for group_name, players in position_groups.items():
                 if not players:
                     continue
-                # Sort by $ descending
                 players.sort(key=lambda x: x['dollar'], reverse=True)
-                top = players[:10]  # Top 10 per position
-
+                top = players[:10]
                 is_pitcher_group = group_name in ('SP', 'RP')
-                stat_cols = p_stat_cols if is_pitcher_group else h_stat_cols
 
-                # Build header with available columns
-                lines.append(f"\n**{group_name} ({len(players)} available, showing top {len(top)})**\n")
-                header = ['Name', 'Pos', 'Team', '$']
-                # Only include stat columns that actually exist in the data
-                available_stats = []  # list of (display_name, actual_col_name)
+                # Detect available columns from sample row
                 sample_row = top[0]['row'] if top else None
                 sample_keys = set(dict(sample_row).keys()) if sample_row is not None else set()
 
-                if sample_row is not None:
-                    for col in stat_cols:
-                        # Check aliases for this column
-                        aliases = col_aliases.get(col, [col])
-                        found_col = None
-                        for alias in aliases:
-                            if alias in sample_keys:
-                                found_col = alias
-                                break
-                        if found_col:
-                            display = col_display.get(found_col, col_display.get(col, col))
-                            available_stats.append((display, found_col))
-                    # Add ROS/context columns if available
-                    for col in ros_cols:
-                        aliases = col_aliases.get(col, [col])
-                        found_col = None
-                        for alias in aliases:
-                            if alias in sample_keys:
-                                found_col = alias
-                                break
-                        if found_col:
-                            display = col_display.get(found_col, col_display.get(col, col))
-                            available_stats.append((display, found_col))
+                lines.append(f"\n**{group_name} ({len(players)} available, showing top {len(top)})**\n")
 
-                    # Build H/A from Team_HomeGames/Team_AwayGames if H/A not directly available
-                    if not any(d == 'H/A' for d, _ in available_stats):
-                        if 'Team_HomeGames' in sample_keys and 'Team_AwayGames' in sample_keys:
-                            available_stats.append(('H/A', '_computed_ha'))
+                if projection_type == "weekly":
+                    # ── WEEKLY: match Rudy's mockup exactly ──────────────────
+                    if not is_pitcher_group:
+                        # Hitter header
+                        header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
+                                  '$', '$OBP$', '$MT', '$FS',
+                                  'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG',
+                                  'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
+                                  'Games', 'H/A', 'R/L', 'Timestamp']
+                        lines.append('| ' + ' | '.join(header) + ' |')
+                        lines.append('|' + '---|' * len(header))
+                        for fa in top:
+                            r = fa['row']
+                            lines.append('| ' + ' | '.join([
+                                fa['name'], fa['team'],
+                                _clean_str(r.get('Handedness', '')),
+                                fa['pos'],
+                                _clean_str(r.get('Y! Pos', '')),
+                                _get_wof(r),
+                                _clean_str(r.get('Opp', '')),
+                                str(round(fa['dollar'], 1)),
+                                fmt_stat(r.get('$/G$', '')),
+                                fmt_stat(r.get('$ MT$', '')),
+                                fmt_stat(r.get('$ FS$', '')),
+                                fmt_stat(r.get('G', '')),
+                                fmt_stat(r.get('PA', '')),
+                                fmt_stat(r.get('R', '')),
+                                fmt_stat(r.get('HR', '')),
+                                fmt_stat(r.get('RBI', '')),
+                                fmt_stat(r.get('SB', '')),
+                                fmt_stat(r.get('AVG', ''), 3),
+                                fmt_stat(r.get('OBP', ''), 3),
+                                fmt_stat(r.get('SLG', ''), 3),
+                                fmt_stat(r.get('R%', '')),
+                                _weekly_ros12(r),
+                                _weekly_ros_pg(r),
+                                _weekly_ros15(r),
+                                fmt_stat(r.get('RFS12', '')),
+                                fmt_stat(r.get('RFS15', '')),
+                                fmt_stat(r.get('Team_Games', r.get('Games', ''))),
+                                _get_ha(r),
+                                _get_rl_weekly(r),
+                                _fmt_ts(r.get('Timestamp', '')),
+                            ]) + ' |')
+                    else:
+                        # Pitcher header
+                        header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
+                                  '$', '$OBP$', '$MT', '$FS',
+                                  'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR_P',
+                                  'ERA', 'WHIP',
+                                  'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
+                                  'Games', 'H/A', 'R/L', 'Timestamp']
+                        lines.append('| ' + ' | '.join(header) + ' |')
+                        lines.append('|' + '---|' * len(header))
+                        for fa in top:
+                            r = fa['row']
+                            lines.append('| ' + ' | '.join([
+                                fa['name'], fa['team'],
+                                _clean_str(r.get('Handedness', '')),
+                                fa['pos'],
+                                _clean_str(r.get('Y! Pos', '')),
+                                _get_wof(r),
+                                _clean_str(r.get('Opp', '')),
+                                str(round(fa['dollar'], 1)),
+                                fmt_stat(r.get('$/G$', '')),
+                                fmt_stat(r.get('$ MT$', '')),
+                                fmt_stat(r.get('$ FS$', '')),
+                                fmt_stat(r.get('GS', '')),
+                                fmt_stat(r.get('QS', '')),
+                                fmt_stat(r.get('W', '')),
+                                fmt_stat(r.get('L', '')),
+                                fmt_stat(r.get('IP', '')),
+                                fmt_stat(r.get('H_Pitch', r.get('H_pitch', ''))),
+                                fmt_stat(r.get('ER', '')),
+                                fmt_stat(r.get('SO_Pitch', r.get('K', ''))),
+                                fmt_stat(r.get('BB_Pitch', '')),
+                                fmt_stat(r.get('HR_Pitch', '')),
+                                fmt_stat(r.get('ERA', ''), 3),
+                                fmt_stat(r.get('WHIP', ''), 3),
+                                fmt_stat(r.get('R%', '')),
+                                _weekly_ros12(r),
+                                _weekly_ros_pg(r),
+                                _weekly_ros15(r),
+                                fmt_stat(r.get('RFS12', '')),
+                                fmt_stat(r.get('RFS15', '')),
+                                fmt_stat(r.get('Team_Games', r.get('Games', ''))),
+                                _get_ha(r),
+                                _get_rl_weekly(r),
+                                _fmt_ts(r.get('Timestamp', '')),
+                            ]) + ' |')
 
-                for display, _ in available_stats:
-                    header.append(display)
-                lines.append('| ' + ' | '.join(header) + ' |')
-                lines.append('|' + '---|' * len(header))
+                else:
+                    # ── DAILY: match Rudy's SQL queries ──────────────────────
+                    has_pitcher_col = 'PitcherName' in sample_keys
+                    has_throws_col = 'Throws' in sample_keys
 
-                for fa in top:
-                    row_data = fa['row']
-                    row_parts = [fa['name'], fa['pos'], fa['team'], str(round(fa['dollar'], 1))]
-                    for display, actual_col in available_stats:
-                        if actual_col == '_computed_ha':
-                            # Compute H/A from home/away games
-                            h_games = row_data.get('Team_HomeGames', '')
-                            a_games = row_data.get('Team_AwayGames', '')
-                            if str(h_games) not in ('nan', 'None', '') and str(a_games) not in ('nan', 'None', ''):
-                                row_parts.append(f"{fmt_stat(h_games)}/{fmt_stat(a_games)}")
-                            else:
-                                row_parts.append('')
-                        else:
-                            val = row_data.get(actual_col, '')
-                            # Format: 3 decimals for rate stats
-                            if display in ('AVG', 'OBP', 'SLG', 'ERA', 'WHIP'):
-                                row_parts.append(fmt_stat(val, 3))
-                            elif display == 'Opp':
-                                row_parts.append(str(val) if str(val) not in ('nan', 'None') else '')
-                            else:
-                                row_parts.append(fmt_stat(val))
-                    lines.append('| ' + ' | '.join(row_parts) + ' |')
+                    if not is_pitcher_group:
+                        # Hitter header: Name, Team, H, Pos, Y! Pos, Date, Opp, [Pitcher, R/L,] $, G, PA, R, HR, RBI, SB, AVG, OBP, SLG, R%, ROS12, $/G, ROS15, Timestamp
+                        header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp']
+                        if has_pitcher_col:
+                            header.append('Pitcher')
+                        if has_throws_col:
+                            header.append('R/L')
+                        header += ['$', 'G', 'PA', 'R', 'HR', 'RBI', 'SB',
+                                   'AVG', 'OBP', 'SLG',
+                                   'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
+                        lines.append('| ' + ' | '.join(header) + ' |')
+                        lines.append('|' + '---|' * len(header))
+                        for fa in top:
+                            r = fa['row']
+                            row_parts = [
+                                fa['name'], fa['team'],
+                                _clean_str(r.get('Handedness', '')),
+                                fa['pos'],
+                                _clean_str(r.get('Y! Pos', '')),
+                                _get_date_str(r),
+                                _clean_str(r.get('Opp', '')),
+                            ]
+                            if has_pitcher_col:
+                                row_parts.append(_clean_str(r.get('PitcherName', '')))
+                            if has_throws_col:
+                                row_parts.append(_clean_str(r.get('Throws', '')))
+                            row_parts += [
+                                str(round(fa['dollar'], 1)),
+                                fmt_stat(r.get('G', '')),
+                                fmt_stat(r.get('PA', '')),
+                                fmt_stat(r.get('R', '')),
+                                fmt_stat(r.get('HR', '')),
+                                fmt_stat(r.get('RBI', '')),
+                                fmt_stat(r.get('SB', '')),
+                                fmt_stat(r.get('AVG', ''), 3),
+                                fmt_stat(r.get('OBP', ''), 3),
+                                fmt_stat(r.get('SLG', ''), 3),
+                                fmt_stat(r.get('R%', '')),
+                                _daily_ros12(r),
+                                _daily_ros_pg(r),
+                                _daily_ros15(r),
+                                _fmt_ts(r.get('Timestamp', '')),
+                            ]
+                            lines.append('| ' + ' | '.join(row_parts) + ' |')
+                    else:
+                        # Pitcher header: Name, Team, H, Pos, Y! Pos, Date, Opp, $, GS, QS, W, L, IP, H, ER, K, BB, HR, ERA, WHIP, R%, ROS12, $/G, ROS15, Timestamp
+                        header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', '$',
+                                  'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
+                                  'ERA', 'WHIP',
+                                  'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
+                        lines.append('| ' + ' | '.join(header) + ' |')
+                        lines.append('|' + '---|' * len(header))
+                        for fa in top:
+                            r = fa['row']
+                            lines.append('| ' + ' | '.join([
+                                fa['name'], fa['team'],
+                                _clean_str(r.get('Handedness', '')),
+                                fa['pos'],
+                                _clean_str(r.get('Y! Pos', '')),
+                                _get_date_str(r),
+                                _clean_str(r.get('Opp', '')),
+                                str(round(fa['dollar'], 1)),
+                                fmt_stat(r.get('GS', '')),
+                                fmt_stat(r.get('QS', '')),
+                                fmt_stat(r.get('W', '')),
+                                fmt_stat(r.get('L', '')),
+                                fmt_stat(r.get('IP', '')),
+                                fmt_stat(r.get('H_Pitch', r.get('H_pitch', ''))),
+                                fmt_stat(r.get('ER', '')),
+                                fmt_stat(r.get('SO_Pitch', r.get('K', ''))),
+                                fmt_stat(r.get('BB_Pitch', '')),
+                                fmt_stat(r.get('HR_Pitch', '')),
+                                fmt_stat(r.get('ERA', ''), 3),
+                                fmt_stat(r.get('WHIP', ''), 3),
+                                fmt_stat(r.get('R%', '')),
+                                _daily_ros12(r),
+                                _daily_ros_pg(r),
+                                _daily_ros15(r),
+                                _fmt_ts(r.get('Timestamp', '')),
+                            ]) + ' |')
 
             return "\n".join(lines)
 
@@ -1043,29 +1229,48 @@ async def chat(
                         if str(r15_w) not in ('nan', 'None', ''):
                             ros15 = fmt_stat(r15_w)
 
+                    handedness = _clean_str(weekly_row.get('Handedness', ''))
+                    y_pos = _clean_str(weekly_row.get('Y! Pos', ''))
+                    wof_str = _get_wof(weekly_row)
+                    obp_dollar = fmt_stat(weekly_row.get('$/G$', ''))
+                    mt_dollar = fmt_stat(weekly_row.get('$ MT$', ''))
+                    fs_dollar = fmt_stat(weekly_row.get('$ FS$', ''))
+                    r_pct = fmt_stat(weekly_row.get('R%', ''))
+                    rfs12 = fmt_stat(weekly_row.get('RFS12', ''))
+                    rfs15 = fmt_stat(weekly_row.get('RFS15', ''))
+                    rl_weekly = _get_rl_weekly(weekly_row)
+                    ts_weekly = _fmt_ts(weekly_row.get('Timestamp', ''))
+
                     if is_pitcher:
                         pitcher_rows.append((dollar, [
-                            name, pos, team, opp, str(round(dollar, 1)),
+                            name, team, handedness, pos, y_pos, wof_str, opp,
+                            str(round(dollar, 1)),
+                            obp_dollar, mt_dollar, fs_dollar,
                             fmt_stat(weekly_row.get('GS', '')), fmt_stat(weekly_row.get('QS', '')),
                             fmt_stat(weekly_row.get('W', '')), fmt_stat(weekly_row.get('L', '')),
                             fmt_stat(weekly_row.get('IP', '')),
                             fmt_stat(weekly_row.get('H_Pitch', weekly_row.get('H_pitch', ''))),
+                            fmt_stat(weekly_row.get('ER', '')),
                             fmt_stat(weekly_row.get('SO_Pitch', weekly_row.get('K', ''))),
+                            fmt_stat(weekly_row.get('BB_Pitch', '')),
+                            fmt_stat(weekly_row.get('HR_Pitch', '')),
                             fmt_stat(weekly_row.get('ERA', ''), 2), fmt_stat(weekly_row.get('WHIP', ''), 2),
-                            ros12, ros_pg, ros15,
-                            fmt_stat(team_games), home_away
+                            r_pct, ros12, ros_pg, ros15, rfs12, rfs15,
+                            fmt_stat(team_games), home_away, rl_weekly, ts_weekly
                         ]))
                     else:
                         hitter_rows.append((dollar, [
-                            name, pos, team, opp, str(round(dollar, 1)),
+                            name, team, handedness, pos, y_pos, wof_str, opp,
+                            str(round(dollar, 1)),
+                            obp_dollar, mt_dollar, fs_dollar,
                             str(games),
                             fmt_stat(weekly_row.get('PA', '')),
                             fmt_stat(weekly_row.get('R', '')), fmt_stat(weekly_row.get('HR', '')),
                             fmt_stat(weekly_row.get('RBI', '')), fmt_stat(weekly_row.get('SB', '')),
                             fmt_stat(weekly_row.get('AVG', ''), 3), fmt_stat(weekly_row.get('OBP', ''), 3),
                             fmt_stat(weekly_row.get('SLG', ''), 3),
-                            ros12, ros_pg, ros15,
-                            fmt_stat(team_games), home_away
+                            r_pct, ros12, ros_pg, ros15, rfs12, rfs15,
+                            fmt_stat(team_games), home_away, rl_weekly, ts_weekly
                         ]))
                 else:
                     # No weekly projection = inactive player. Cross-ref with ROS
@@ -1101,7 +1306,11 @@ async def chat(
             # Hitters table
             if hitter_rows:
                 lines.append(f"**Hitters ({len(hitter_rows)})**\n")
-                h_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG', 'ROS12', '$/G', 'ROS15', 'Games', 'H/A']
+                h_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
+                            '$', '$OBP$', '$MT', '$FS',
+                            'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG',
+                            'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
+                            'Games', 'H/A', 'R/L', 'Timestamp']
                 lines.append('| ' + ' | '.join(h_header) + ' |')
                 lines.append('|' + '---|' * len(h_header))
                 for _, row_data in hitter_rows:
@@ -1110,7 +1319,12 @@ async def chat(
             # Pitchers table
             if pitcher_rows:
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
-                p_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'GS', 'QS', 'W', 'L', 'IP', 'H', 'K', 'ERA', 'WHIP', 'ROS12', '$/G', 'ROS15', 'Games', 'H/A']
+                p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
+                            '$', '$OBP$', '$MT', '$FS',
+                            'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR_P',
+                            'ERA', 'WHIP',
+                            'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
+                            'Games', 'H/A', 'R/L', 'Timestamp']
                 lines.append('| ' + ' | '.join(p_header) + ' |')
                 lines.append('|' + '---|' * len(p_header))
                 for _, row_data in pitcher_rows:
@@ -1212,38 +1426,55 @@ async def chat(
                     except (ValueError, TypeError):
                         dollar = 0.0
 
-                    # Get ROS context
-                    ros_row = ros_lookup.get(match_id)
-                    ros12 = ''
-                    ros_pg = ''
-                    if ros_row is not None:
-                        rd = ros_row.get('$', '')
-                        if str(rd) not in ('nan', 'None', ''):
-                            ros12 = fmt_stat(rd)
-                        rpg = ros_row.get('$/G$', '')
-                        if str(rpg) not in ('nan', 'None', ''):
-                            ros_pg = fmt_stat(rpg)
+                    # Get ROS context - try daily row first (has $ROS12$ and ROS12 $/G), then ROS lookup
+                    ros12 = _daily_ros12(daily_row)
+                    ros_pg = _daily_ros_pg(daily_row)
+                    if not ros12 or not ros_pg:
+                        ros_row = ros_lookup.get(match_id)
+                        if ros_row is not None:
+                            if not ros12:
+                                rd = ros_row.get('$', '')
+                                if str(rd) not in ('nan', 'None', ''):
+                                    ros12 = fmt_stat(rd)
+                            if not ros_pg:
+                                rpg = ros_row.get('$/G$', '')
+                                if str(rpg) not in ('nan', 'None', ''):
+                                    ros_pg = fmt_stat(rpg)
 
                     is_pitcher = pos.upper() in ('SP', 'RP', 'P')
+                    ros15 = _daily_ros15(daily_row)
+                    r_pct = fmt_stat(daily_row.get('R%', ''))
+                    ts_daily = _fmt_ts(daily_row.get('Timestamp', ''))
+                    handedness_d = _clean_str(daily_row.get('Handedness', ''))
+                    y_pos_d = _clean_str(daily_row.get('Y! Pos', ''))
+                    date_d = _get_date_str(daily_row)
 
                     if is_pitcher:
                         pitcher_rows.append((dollar, [
-                            name, pos, team, opp, str(round(dollar, 1)),
+                            name, team, handedness_d, pos, y_pos_d, date_d, opp,
+                            str(round(dollar, 1)),
                             fmt_stat(daily_row.get('GS', '')), fmt_stat(daily_row.get('QS', '')),
                             fmt_stat(daily_row.get('W', '')), fmt_stat(daily_row.get('L', '')),
                             fmt_stat(daily_row.get('IP', '')),
+                            fmt_stat(daily_row.get('H_Pitch', daily_row.get('H_pitch', ''))),
+                            fmt_stat(daily_row.get('ER', '')),
                             fmt_stat(daily_row.get('SO_Pitch', daily_row.get('K', ''))),
-                            fmt_stat(daily_row.get('ERA', '')), fmt_stat(daily_row.get('WHIP', '')),
-                            ros12, ros_pg
+                            fmt_stat(daily_row.get('BB_Pitch', '')),
+                            fmt_stat(daily_row.get('HR_Pitch', '')),
+                            fmt_stat(daily_row.get('ERA', ''), 3), fmt_stat(daily_row.get('WHIP', ''), 3),
+                            r_pct, ros12, ros_pg, ros15, ts_daily
                         ]))
                     else:
                         hitter_rows.append((dollar, [
-                            name, pos, team, opp, str(round(dollar, 1)),
+                            name, team, handedness_d, pos, y_pos_d, date_d, opp,
+                            str(round(dollar, 1)),
+                            fmt_stat(daily_row.get('G', '')),
+                            fmt_stat(daily_row.get('PA', '')),
                             fmt_stat(daily_row.get('R', '')), fmt_stat(daily_row.get('HR', '')),
                             fmt_stat(daily_row.get('RBI', '')), fmt_stat(daily_row.get('SB', '')),
                             fmt_stat(daily_row.get('AVG', ''), 3), fmt_stat(daily_row.get('OBP', ''), 3),
                             fmt_stat(daily_row.get('SLG', ''), 3),
-                            ros12, ros_pg
+                            r_pct, ros12, ros_pg, ros15, ts_daily
                         ]))
                 else:
                     # No daily projection = inactive/no game. Cross-ref with ROS
@@ -1279,7 +1510,9 @@ async def chat(
             # Hitters table
             if hitter_rows:
                 lines.append(f"**Hitters ({len(hitter_rows)})**\n")
-                h_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG', 'ROS$', '$/G']
+                h_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', '$',
+                            'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG',
+                            'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
                 lines.append('| ' + ' | '.join(h_header) + ' |')
                 lines.append('|' + '---|' * len(h_header))
                 for _, row_data in hitter_rows:
@@ -1288,7 +1521,10 @@ async def chat(
             # Pitchers table
             if pitcher_rows:
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
-                p_header = ['Name', 'Pos', 'Team', 'Opp', '$', 'GS', 'QS', 'W', 'L', 'IP', 'K', 'ERA', 'WHIP', 'ROS$', '$/G']
+                p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', '$',
+                            'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
+                            'ERA', 'WHIP',
+                            'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
                 lines.append('| ' + ' | '.join(p_header) + ' |')
                 lines.append('|' + '---|' * len(p_header))
                 for _, row_data in pitcher_rows:
