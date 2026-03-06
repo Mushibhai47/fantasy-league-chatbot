@@ -140,6 +140,7 @@ async def chat(
         nfbc_lookup = {}  # NFBCID -> full projection data string
         fantrax_lookup = {}  # FantraxID -> full projection data string
         name_lookup = {}  # name -> full projection data string
+        proj_pos_lookup = {}  # NFBCID/FantraxID -> Pos from projection data (for display)
 
         if _projections_df is not None:
             try:
@@ -195,14 +196,22 @@ async def chat(
 
                     dollar_str = ' '.join(dollar_parts) if dollar_parts else ''
 
+                    # Always store position (even if no dollar value)
+                    nfbc_id = row.get('NFBCID', '')
+                    fantrax_id = row.get('FantraxID', '')
+                    row_pos = str(row.get('Pos', '')).strip()
+                    if row_pos and row_pos not in ('nan', 'None', ''):
+                        if nfbc_id and str(nfbc_id) not in ('nan', 'None', ''):
+                            proj_pos_lookup[str(nfbc_id)] = row_pos
+                        if fantrax_id and str(fantrax_id) not in ('nan', 'None', ''):
+                            proj_pos_lookup[str(fantrax_id)] = row_pos
+
                     if dollar_str:
                         # Store by NFBCID (most reliable for NFBC CSVs)
-                        nfbc_id = row.get('NFBCID', '')
                         if nfbc_id and str(nfbc_id) not in ('nan', 'None', ''):
                             nfbc_lookup[str(nfbc_id)] = dollar_str
 
                         # Store by FantraxID
-                        fantrax_id = row.get('FantraxID', '')
                         if fantrax_id and str(fantrax_id) not in ('nan', 'None', ''):
                             fantrax_lookup[str(fantrax_id)] = dollar_str
 
@@ -420,14 +429,30 @@ async def chat(
             pos = (player.position or '').upper()
             is_pitcher = pos in PITCHER_POSITIONS
 
+            # Clean player name: strip trailing position codes (e.g. "Noelvi Marte 3B,OF" -> "Noelvi Marte")
+            display_name = _re.sub(
+                r'\s+(?:(?:1B|2B|3B|SS|OF|DH|SP|RP|P|C)(?:[/,](?:1B|2B|3B|SS|OF|DH|SP|RP|P|C))*)\s*$',
+                '', player.name or ''
+            ).strip() or player.name or '?'
+
+            # Resolve best display position: prefer projection data over stored 'P' or None
+            display_pos = player.position or ''
+            if not display_pos or display_pos.upper() == 'P':
+                pid_key = str(player.nfbc_id) if player.nfbc_id else ''
+                if not pid_key and player.fantrax_id:
+                    pid_key = str(player.fantrax_id)
+                if pid_key:
+                    display_pos = proj_pos_lookup.get(pid_key, display_pos)
+            display_pos = display_pos or '?'
+
             # Build clear, standalone player string to prevent GPT from mixing up values
             # Format: "Name | Pos: SP | Team: NYY | $: 12.3 | $W: 2.1 | $K: 5.2 | ..."
             if dollar_val:
                 # dollar_val is like " [$12.3 $R:1.2 $HR:3.4 ...]" - reformat to pipe-separated
                 clean_dollar = dollar_val.strip().strip('[]')
-                player_str = f"{player.name} | Pos: {player.position} | Team: {player.team} | {clean_dollar}"
+                player_str = f"{display_name} | Pos: {display_pos} | Team: {player.team} | {clean_dollar}"
             else:
-                player_str = f"{player.name} | Pos: {player.position} | Team: {player.team} | NO PROJECTION"
+                player_str = f"{display_name} | Pos: {display_pos} | Team: {player.team} | NO PROJECTION"
 
             if owner == 'Free Agent':
                 # Store tuple (dollar_value, player_str) for sorting later
@@ -1522,8 +1547,11 @@ async def chat(
                             r_pct, ros12, ros_pg, ros15, ts_daily
                         ]))
                     else:
+                        pitcher_name_d = _clean_str(daily_row.get('PitcherName', ''))
+                        throws_d = _clean_str(daily_row.get('Throws', ''))
                         hitter_rows.append((dollar, [
                             name, team, handedness_d, pos, y_pos_d, date_d, opp,
+                            pitcher_name_d, throws_d,
                             str(round(dollar, 1)),
                             fmt_stat(daily_row.get('G', '')),
                             fmt_stat(daily_row.get('PA', '')),
@@ -1567,7 +1595,8 @@ async def chat(
             # Hitters table
             if hitter_rows:
                 lines.append(f"**Hitters ({len(hitter_rows)})**\n")
-                h_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', '$',
+                h_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp',
+                            'Pitcher', 'R/L', '$',
                             'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG',
                             'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
                 lines.append('| ' + ' | '.join(h_header) + ' |')
