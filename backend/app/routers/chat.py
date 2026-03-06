@@ -1212,22 +1212,28 @@ async def chat(
                         rpg = ros_row_w.get('$/G$', '')
                         if str(rpg) not in ('nan', 'None', ''):
                             ros_pg = fmt_stat(rpg)
-                        r15 = ros_row_w.get('$ROS15$', weekly_row.get('ROS15', ''))
+                        r15 = ros_row_w.get('$ROS15$', '')
                         if str(r15) not in ('nan', 'None', ''):
                             ros15 = fmt_stat(r15)
-                    # Also check weekly row for ROS columns directly
+                    # Also check weekly row directly for ROS columns ($ROS12$, ROS12 $/G, $ROS15$)
                     if not ros12:
-                        r12_w = weekly_row.get('ROS12', '')
-                        if str(r12_w) not in ('nan', 'None', ''):
-                            ros12 = fmt_stat(r12_w)
+                        for k in ('$ROS12$', 'ROS12'):
+                            r12_w = weekly_row.get(k, '')
+                            if str(r12_w) not in ('nan', 'None', ''):
+                                ros12 = fmt_stat(r12_w)
+                                break
                     if not ros_pg:
-                        rpg_w = weekly_row.get('$/G', '')
-                        if str(rpg_w) not in ('nan', 'None', ''):
-                            ros_pg = fmt_stat(rpg_w)
+                        for k in ('ROS12 $/G', '$/G'):
+                            rpg_w = weekly_row.get(k, '')
+                            if str(rpg_w) not in ('nan', 'None', ''):
+                                ros_pg = fmt_stat(rpg_w)
+                                break
                     if not ros15:
-                        r15_w = weekly_row.get('ROS15', '')
-                        if str(r15_w) not in ('nan', 'None', ''):
-                            ros15 = fmt_stat(r15_w)
+                        for k in ('$ROS15$', 'ROS15'):
+                            r15_w = weekly_row.get(k, '')
+                            if str(r15_w) not in ('nan', 'None', ''):
+                                ros15 = fmt_stat(r15_w)
+                                break
 
                     handedness = _clean_str(weekly_row.get('Handedness', ''))
                     y_pos = _clean_str(weekly_row.get('Y! Pos', ''))
