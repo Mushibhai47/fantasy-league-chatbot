@@ -244,8 +244,28 @@ async def chat(
         # ============================================================
         # PLATFORM-AWARE MATCHING HELPERS
         # ============================================================
+        def get_player_id_for_col(player_obj, id_col: str) -> str:
+            """Return the player's ID value for the given id_col (NFBCID / FantraxID / CBSSportsName)."""
+            if id_col == 'FantraxID':
+                return str(player_obj.fantrax_id) if player_obj.fantrax_id else ''
+            elif id_col == 'CBSSportsName':
+                return str(player_obj.cbs_player_name) if player_obj.cbs_player_name else ''
+            else:  # NFBCID (default)
+                return str(player_obj.nfbc_id) if player_obj.nfbc_id else ''
+
+        def resolve_id_col(df) -> str:
+            """Choose the best ID column that actually exists in df for this league type.
+            IMPORTANT: must be called first so roster lookups use the same column."""
+            if league.league_type == 'fantrax' and 'FantraxID' in df.columns:
+                return 'FantraxID'
+            elif league.league_type == 'cbs' and 'CBSSportsName' in df.columns:
+                return 'CBSSportsName'
+            elif 'NFBCID' in df.columns:
+                return 'NFBCID'
+            return 'NFBCID'
+
         def get_player_match_id(player_obj):
-            """Get the best available ID for matching based on league type"""
+            """Get the best available ID for matching based on league type (legacy helper)."""
             if league.league_type == 'fantrax' and player_obj.fantrax_id:
                 return ('FantraxID', str(player_obj.fantrax_id))
             elif league.league_type == 'cbs' and player_obj.cbs_player_name:
@@ -257,43 +277,45 @@ async def chat(
             return (None, None)
 
         def build_projection_lookup(df):
-            """Build lookup dict from projection DataFrame based on league type"""
+            """Build {id_val: row} lookup. Returns (lookup, id_col_used) so callers
+            can build roster ID sets with the SAME column — preventing false matches
+            (e.g. FantraxID accidentally colliding with a different NFBCID)."""
+            id_col = resolve_id_col(df)
             lookup = {}
-            id_col = 'NFBCID'  # default
-            if league.league_type == 'fantrax' and 'FantraxID' in df.columns:
-                id_col = 'FantraxID'
-            elif league.league_type == 'cbs' and 'CBSSportsName' in df.columns:
-                id_col = 'CBSSportsName'
-            elif 'NFBCID' in df.columns:
-                id_col = 'NFBCID'
-
             if id_col in df.columns:
                 for _, row in df.iterrows():
                     id_val = str(row.get(id_col, ''))
                     if id_val and id_val not in ('nan', 'None', ''):
                         lookup[id_val] = row
-            return lookup
+            return lookup, id_col
 
-        def get_team_player_ids(team_name):
-            """Get dict of {match_id: roster_entry} for a team's players"""
+        def get_team_player_ids(team_name, id_col: str = None):
+            """Get {match_id: roster_entry} for a team, keyed by id_col.
+            Pass id_col from build_projection_lookup to guarantee the keys match."""
             result = {}
             for roster_entry in owned_rosters:
                 owner = roster_entry.team_owner
                 if owner and owner.startswith('@'):
                     owner = owner[1:]
                 if owner == team_name and roster_entry.player:
-                    _, id_val = get_player_match_id(roster_entry.player)
-                    if id_val:
+                    if id_col:
+                        id_val = get_player_id_for_col(roster_entry.player, id_col)
+                    else:
+                        _, id_val = get_player_match_id(roster_entry.player)
+                    if id_val and id_val not in ('nan', 'None', ''):
                         result[id_val] = roster_entry
             return result
 
-        def get_owned_ids():
-            """Get set of IDs for all owned players (platform-aware)"""
+        def get_owned_ids(id_col: str = None):
+            """Get set of IDs for all owned players keyed by id_col."""
             ids = set()
             for roster_entry in owned_rosters:
                 if roster_entry.player:
-                    _, id_val = get_player_match_id(roster_entry.player)
-                    if id_val:
+                    if id_col:
+                        id_val = get_player_id_for_col(roster_entry.player, id_col)
+                    else:
+                        _, id_val = get_player_match_id(roster_entry.player)
+                    if id_val and id_val not in ('nan', 'None', ''):
                         ids.add(id_val)
             return ids
 
@@ -322,8 +344,9 @@ async def chat(
             except (ValueError, TypeError):
                 return str(v)
 
-        def fetch_ros_lookup():
-            """Fetch ROS projections and build a lookup by platform ID"""
+        def fetch_ros_lookup(id_col: str = None):
+            """Fetch ROS projections and build a lookup by platform ID.
+            Pass id_col to force a specific column (e.g. same as weekly lookup)."""
             global _projections_df
             if _projections_df is None:
                 try:
@@ -331,12 +354,21 @@ async def chat(
                     _projections_df = svc.fetch_projections()
                 except Exception as e:
                     logger.error(f"Failed to fetch ROS projections: {e}")
-                    return {}
+                    return {}, 'NFBCID'
             ros_df = _projections_df
             if 'LeagueType' in ros_df.columns:
                 type_df = ros_df[ros_df['LeagueType'] == requested_type]
                 if len(type_df) > 0:
                     ros_df = type_df
+            if id_col:
+                # Force specific column (must exist in ros_df or we fall back)
+                if id_col in ros_df.columns:
+                    lookup = {}
+                    for _, row in ros_df.iterrows():
+                        v = str(row.get(id_col, ''))
+                        if v and v not in ('nan', 'None', ''):
+                            lookup[v] = row
+                    return lookup, id_col
             return build_projection_lookup(ros_df)
 
         # Group players by team owner, separating hitters and pitchers
@@ -886,15 +918,11 @@ async def chat(
             if projection_type == "daily":
                 pickup_df = _filter_daily_df_by_date(pickup_df, use_tomorrow=use_tomorrow)
 
-            # Platform-aware: build set of owned player IDs
-            owned_ids = get_owned_ids()
+            # Determine which ID column the projection data actually contains
+            id_col = resolve_id_col(pickup_df)
 
-            # Determine which ID column to use in the projection data
-            id_col = 'NFBCID'
-            if league.league_type == 'fantrax' and 'FantraxID' in pickup_df.columns:
-                id_col = 'FantraxID'
-            elif league.league_type == 'cbs' and 'CBSSportsName' in pickup_df.columns:
-                id_col = 'CBSSportsName'
+            # Platform-aware: build set of owned player IDs using the same id_col
+            owned_ids = get_owned_ids(id_col)
 
             # Filter projections to only free agents (not owned)
             fa_rows = []
@@ -1182,9 +1210,9 @@ async def chat(
             if not matched_team:
                 return f"Could not find team matching '{target_team}'. Available teams: {', '.join(all_team_names)}"
 
-            # Platform-aware: get team player IDs and build projection lookup
-            team_ids = get_team_player_ids(matched_team)
-            weekly_lookup = build_projection_lookup(weekly_df)
+            # Platform-aware: build projection lookup first to determine id_col
+            weekly_lookup, id_col = build_projection_lookup(weekly_df)
+            team_ids = get_team_player_ids(matched_team, id_col)
 
             # Match team players to weekly projections
             hitter_rows = []
@@ -1192,8 +1220,8 @@ async def chat(
             inactive_hitters = []
             inactive_pitchers = []
 
-            # Get ROS lookup for inactive player values
-            ros_lookup = fetch_ros_lookup()
+            # Get ROS lookup for inactive player values (same id_col for consistent matching)
+            ros_lookup, _ = fetch_ros_lookup(id_col)
 
             for match_id, roster_entry in team_ids.items():
                 player = roster_entry.player
@@ -1425,17 +1453,17 @@ async def chat(
             if not matched_team:
                 return f"Could not find team matching '{target_team}'. Available teams: {', '.join(all_team_names)}"
 
-            # Platform-aware matching
-            team_ids = get_team_player_ids(matched_team)
-            daily_lookup = build_projection_lookup(daily_df)
+            # Platform-aware: build projection lookup first to determine id_col
+            daily_lookup, id_col = build_projection_lookup(daily_df)
+            team_ids = get_team_player_ids(matched_team, id_col)
 
             hitter_rows = []
             pitcher_rows = []
             inactive_hitters = []
             inactive_pitchers = []
 
-            # ROS lookup for inactive player values
-            ros_lookup = fetch_ros_lookup()
+            # ROS lookup for inactive player values (same id_col for consistent matching)
+            ros_lookup, _ = fetch_ros_lookup(id_col)
 
             for match_id, roster_entry in team_ids.items():
                 player = roster_entry.player
