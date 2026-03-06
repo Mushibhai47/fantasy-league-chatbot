@@ -51,13 +51,24 @@
                 </div>
 
                 <div class="setup-step" id="step-ready" style="display: none;">
-                    <h2>Select Your Team</h2>
+                    <h2>Setup Your Preferences</h2>
                     <p class="step-description">
-                        Your roster is loaded! Choose your team so buttons work automatically.
+                        Your roster is loaded! Choose your team and league format so buttons work automatically.
                     </p>
                     <div class="input-group" style="margin-bottom: 12px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #555;">Your Team</label>
                         <select id="team-selector" style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; width: 100%; background: white;">
                             <option value="">-- Select your team --</option>
+                        </select>
+                    </div>
+                    <div class="input-group" style="margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #555;">League Format</label>
+                        <select id="league-type-selector" style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; width: 100%; background: white;">
+                            <option value="MLB12">MLB12 (12-team mixed)</option>
+                            <option value="MLB15">MLB15 (15-team mixed)</option>
+                            <option value="MLB10">MLB10 (10-team mixed)</option>
+                            <option value="AL12">AL12 (12-team AL-only)</option>
+                            <option value="NL12">NL12 (12-team NL-only)</option>
                         </select>
                     </div>
                     <button id="start-chat-btn" class="btn btn-primary btn-large">Start Chatting</button>
@@ -106,26 +117,22 @@
             <div id="message-counter" style="display: none; text-align: center; padding: 8px; font-size: 13px; color: #666;"></div>
 
             <div class="quick-actions">
-                <div style="display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap;">
-                    <button class="quick-action-btn tab-btn" data-tab="today" style="background: #1a3a5c; color: white;">Today</button>
-                    <button class="quick-action-btn tab-btn" data-tab="tomorrow">Tomorrow</button>
-                    <button class="quick-action-btn tab-btn" data-tab="weekly">Weekly</button>
+                <div class="btn-category">
+                    <span class="btn-category-label">Pickups:</span>
+                    <button class="quick-action-btn" data-query="today pickups">Today</button>
+                    <button class="quick-action-btn" data-query="tomorrow pickups">Tomorrow</button>
+                    <button class="quick-action-btn" data-query="weekly pickups">Weekly</button>
                 </div>
-                <div id="tab-today" class="tab-content">
-                    <button class="quick-action-btn team-action" data-query="today start/sit {team}">Today Start/Sit</button>
-                    <button class="quick-action-btn" data-query="today pickups">Today Pickups</button>
+                <div class="btn-category">
+                    <span class="btn-category-label">Start/Sit:</span>
+                    <button class="quick-action-btn team-action" data-query="today start/sit {team}">Today</button>
+                    <button class="quick-action-btn team-action" data-query="tomorrow start/sit {team}">Tomorrow</button>
+                    <button class="quick-action-btn team-action" data-query="weekly start/sit {team}">Weekly</button>
                 </div>
-                <div id="tab-tomorrow" class="tab-content" style="display: none;">
-                    <button class="quick-action-btn team-action" data-query="tomorrow start/sit {team}">Tomorrow Start/Sit</button>
-                    <button class="quick-action-btn" data-query="tomorrow pickups">Tomorrow Pickups</button>
-                </div>
-                <div id="tab-weekly" class="tab-content" style="display: none;">
-                    <button class="quick-action-btn team-action" data-query="weekly start/sit {team}">Weekly Start/Sit</button>
-                    <button class="quick-action-btn" data-query="weekly pickups">Weekly Pickups</button>
-                </div>
-                <div style="margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap;">
-                    <button class="quick-action-btn" data-query="league overview">League Overview</button>
-                    <button class="quick-action-btn team-action" data-query="team overview {team}">My Team</button>
+                <div class="btn-category">
+                    <span class="btn-category-label">Overview:</span>
+                    <button class="quick-action-btn" data-query="league overview">League</button>
+                    <button class="quick-action-btn team-action" data-query="team overview {team}">Team</button>
                 </div>
             </div>
         </div>

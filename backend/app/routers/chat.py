@@ -124,18 +124,22 @@ async def chat(
             logger.info(f"✅ Using cached projections: {len(_projections_df)} players")
 
         # Build fast lookup dictionaries from cache (by NFBCID, FantraxID, and name)
-        # Detect requested league type from user message, default MLB12
+        # Detect requested league type — frontend selection takes priority, then message keyword
         AVAILABLE_LEAGUE_TYPES = ["MLB12", "MLB15", "MLB10", "AL12", "NL12"]
         DEFAULT_LEAGUE_TYPE = "MLB12"
 
-        # Check if user requested a specific league type
         import re
         requested_type = DEFAULT_LEAGUE_TYPE
-        msg_upper = request.message.upper()
-        for lt in AVAILABLE_LEAGUE_TYPES:
-            if lt in msg_upper:
-                requested_type = lt
-                break
+        # 1. Use frontend-selected league type if provided
+        if request.league_type and request.league_type.upper() in AVAILABLE_LEAGUE_TYPES:
+            requested_type = request.league_type.upper()
+        else:
+            # 2. Detect from message text as fallback
+            msg_upper = request.message.upper()
+            for lt in AVAILABLE_LEAGUE_TYPES:
+                if lt in msg_upper:
+                    requested_type = lt
+                    break
 
         nfbc_lookup = {}  # NFBCID -> full projection data string
         fantrax_lookup = {}  # FantraxID -> full projection data string

@@ -12,6 +12,7 @@ class ChatRequest(BaseModel):
     user_api_key: Optional[str] = None  # User's OpenAI/Claude API key (optional, uses .env if not provided)
     provider: str = "openai"  # 'openai' or 'claude'
     conversation_history: Optional[List[Dict[str, str]]] = None  # Previous messages for memory
+    league_type: Optional[str] = None  # Projection league type override (e.g. 'MLB12', 'MLB15')
 
 
 class ChatResponse(BaseModel):

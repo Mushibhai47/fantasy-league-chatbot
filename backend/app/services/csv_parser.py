@@ -96,14 +96,25 @@ class CSVParser:
             # Example: "Shohei Ohtani P,U | LAD "
             player_str = str(row['Player'])
 
-            # Extract name and team
+            # Extract name, position, and team
+            position = None
             if '|' in player_str:
-                name_pos, mlb_team = player_str.split('|')
+                name_pos, mlb_team = player_str.split('|', 1)
                 mlb_team = mlb_team.strip()
 
+                # Extract position codes before stripping (e.g. "Shohei Ohtani SP,RP" → "SP,RP")
+                pos_match = re.search(r'\s+([A-Z][A-Z0-9,/]+)\s*$', name_pos)
+                if pos_match:
+                    position = pos_match.group(1).strip()
+                    # Normalize: take first recognized position token
+                    for tok in re.split(r'[,/]', position):
+                        tok = tok.strip().upper()
+                        if tok in ('SP', 'RP', 'P', 'C', '1B', '2B', '3B', 'SS', 'OF', 'DH', 'MI', 'CI', 'U', 'UTIL'):
+                            position = tok
+                            break
+
                 # Extract just the name (before position abbreviations)
-                # Position is usually at the end: "Shohei Ohtani P,U"
-                name = re.sub(r'\s+[A-Z,]+\s*$', '', name_pos).strip()
+                name = re.sub(r'\s+[A-Z][A-Z0-9,/]+\s*$', '', name_pos).strip()
             else:
                 name = player_str.strip()
                 mlb_team = None
@@ -114,7 +125,7 @@ class CSVParser:
                 'cbs_player_name': player_str.strip(),  # Full CBS format: "Aaron Judge OF | NYY"
                 'name': name,
                 'mlb_team': mlb_team,
-                'position': None,  # Could extract from Player string if needed
+                'position': position,
                 'owner': owner,
                 'league_type': 'cbs'
             }

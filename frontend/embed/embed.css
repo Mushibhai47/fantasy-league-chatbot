@@ -727,10 +727,25 @@ body {
     padding: var(--spacing-md) var(--spacing-lg);
     border-top: 1px solid var(--border);
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-    overflow-x: auto;
+    flex-direction: column;
+    gap: 6px;
     animation: slideInUp 0.4s var(--transition-base);
+}
+
+.btn-category {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.btn-category-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #888;
+    min-width: 58px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
 }
 
 @keyframes slideInUp {

@@ -15,6 +15,7 @@ const state = {
     userId: null,  // For tracking message limits
     userEmail: null,
     selectedTeam: null,  // Selected team name for quick actions
+    selectedLeagueType: 'MLB12',  // Projection league type (MLB12, MLB15, etc.)
     conversationHistory: [],
     messagesRemaining: null,
     monthlyLimit: 100
@@ -127,6 +128,12 @@ function setupEventListeners() {
         }
     });
 
+    // League type selector
+    document.getElementById('league-type-selector')?.addEventListener('change', (e) => {
+        state.selectedLeagueType = e.target.value || 'MLB12';
+        localStorage.setItem('razzball_league_type', state.selectedLeagueType);
+    });
+
     // Settings modal
     document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
     document.getElementById('close-modal-btn').addEventListener('click', closeSettingsModal);
@@ -174,6 +181,14 @@ function loadSavedData() {
     }
     state.userId = savedUserId;
 
+    // Load saved league type
+    const savedLeagueType = localStorage.getItem('razzball_league_type');
+    if (savedLeagueType) {
+        state.selectedLeagueType = savedLeagueType;
+        const ltSelector = document.getElementById('league-type-selector');
+        if (ltSelector) ltSelector.value = savedLeagueType;
+    }
+
     // Load saved team selection
     const savedTeam = localStorage.getItem('razzball_selected_team');
     if (savedTeam) {
@@ -181,15 +196,15 @@ function loadSavedData() {
     }
 }
 
-function showAppropriateScreen() {
+async function showAppropriateScreen() {
     if (state.leagueId) {
         if (state.selectedTeam) {
             // Has league + team selected - go straight to chat
             showChatScreen();
         } else {
-            // Has league but no team - show team selector
-            loadTeamsForSelector();
+            // Has league but no team - show team selector, wait for teams to load first
             showSetupScreen('ready');
+            await loadTeamsForSelector();
         }
     } else {
         // No league data - show upload (API key is now optional)
@@ -332,25 +347,21 @@ async function uploadFile(file) {
 
         const data = await response.json();
 
-        // Save league ID
+        // Save league ID and clear stale team selection from previous upload
         state.leagueId = data.id;
+        state.selectedTeam = null;
         localStorage.setItem('razzball_league_id', data.id);
+        localStorage.removeItem('razzball_selected_team');
 
         showStatus(statusEl, `✅ Success! Loaded ${data.total_players} players from your league`, 'success');
 
-        // Fetch team names for the selector
-        try {
-            const teamsResponse = await fetch(`${API_BASE_URL}/csv/${data.id}/teams`);
-            if (teamsResponse.ok) {
-                const teamsData = await teamsResponse.json();
-                populateTeamSelector(teamsData.teams);
-            }
-        } catch (e) {
-            console.warn('Could not fetch teams:', e);
-        }
-
-        setTimeout(() => {
+        setTimeout(async () => {
             showSetupScreen('ready');
+            // Restore league type selector to saved value
+            const ltSelector = document.getElementById('league-type-selector');
+            if (ltSelector) ltSelector.value = state.selectedLeagueType;
+            // Load teams after showing the screen
+            await loadTeamsForSelector();
         }, 1500);
 
     } catch (error) {
@@ -389,6 +400,7 @@ async function handleSendMessage() {
                 user_id: state.userId,
                 user_api_key: state.apiKey || null,  // Optional - backend will use its key if null
                 provider: 'openai',
+                league_type: state.selectedLeagueType || 'MLB12',
                 conversation_history: state.conversationHistory.slice(-6)  // Send last 6 messages for memory
             })
         });
@@ -618,6 +630,8 @@ function handleClearData() {
         // Clear localStorage
         localStorage.removeItem('razzball_api_key');
         localStorage.removeItem('razzball_league_id');
+        localStorage.removeItem('razzball_selected_team');
+        localStorage.removeItem('razzball_league_type');
 
         // Close modal and go back to setup
         closeSettingsModal();

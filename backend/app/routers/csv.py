@@ -180,6 +180,15 @@ async def get_teams(
     return {"league_id": str(league_id), "teams": teams}
 
 
+@router.get("/league-types")
+async def get_league_types():
+    """Return the available Razzball projection league types"""
+    return {
+        "league_types": ["MLB12", "MLB15", "MLB10", "AL12", "NL12"],
+        "default": "MLB12"
+    }
+
+
 @router.get("/{league_id}/free-agents", response_model=RosterResponse)
 async def get_free_agents(
     league_id: uuid.UUID,
