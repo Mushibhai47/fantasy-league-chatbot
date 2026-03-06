@@ -17,6 +17,7 @@ router = APIRouter()
 _projections_df = None
 _weekly_projections_df = None
 _daily_projections_df = None
+_daily_cache_date = None  # EST date when daily cache was last populated
 
 
 @router.post("/", response_model=ChatResponse)
@@ -752,6 +753,38 @@ async def chat(
             except (ValueError, TypeError):
                 return str(v)
 
+        def _get_target_date(use_tomorrow: bool = False):
+            """Return target date in EST, falling back to offset from UTC-5"""
+            from datetime import datetime, timedelta, timezone
+            est = timezone(timedelta(hours=-5))  # EST (UTC-5); close enough year-round
+            base = datetime.now(est).date()
+            return base + timedelta(days=1 if use_tomorrow else 0)
+
+        def _filter_daily_df_by_date(df, use_tomorrow: bool = False):
+            """Filter daily projection DataFrame to the target date (EST).
+            If no rows match, falls back to the most recent date in the data
+            so the report always shows something useful (e.g. test/off-season data)."""
+            if 'Date' not in df.columns:
+                return df
+            target_date = _get_target_date(use_tomorrow)
+            try:
+                tmp = df.copy()
+                tmp['_parsed_date'] = pd.to_datetime(tmp['Date'], errors='coerce').dt.date
+                filtered = tmp[tmp['_parsed_date'] == target_date]
+                if len(filtered) > 0:
+                    logger.info(f"Daily filter: {len(filtered)} rows for {target_date}")
+                    return filtered
+                # Fallback: use most recent available date
+                dates = sorted(tmp['_parsed_date'].dropna().unique())
+                if dates:
+                    fallback = dates[-1]
+                    fallback_rows = tmp[tmp['_parsed_date'] == fallback]
+                    logger.info(f"No data for {target_date}, using fallback date {fallback} ({len(fallback_rows)} rows)")
+                    return fallback_rows
+            except Exception as e:
+                logger.warning(f"Could not filter by date: {e}")
+            return df
+
         def _get_date_str(row) -> str:
             v = row.get('Date', '')
             if str(v) in ('nan', 'None', ''):
@@ -806,7 +839,7 @@ async def chat(
 
         def generate_pickups_report(projection_type: str, use_tomorrow: bool = False) -> str:
             """Generate Weekly/Daily Pickups - best available FAs by position"""
-            global _weekly_projections_df, _daily_projections_df
+            global _weekly_projections_df, _daily_projections_df, _daily_cache_date
 
             if projection_type == "weekly":
                 label = "Weekly"
@@ -827,6 +860,12 @@ async def chat(
                         return f"Could not fetch {label.lower()} projections. Please try again later."
                 pickup_df = _weekly_projections_df
             else:
+                # Invalidate daily cache if the EST date has changed
+                today_est = _get_target_date(False)
+                if _daily_cache_date != today_est:
+                    _daily_projections_df = None
+                    _daily_cache_date = today_est
+                    logger.info(f"Daily cache invalidated for new date: {today_est}")
                 if _daily_projections_df is None:
                     try:
                         svc = ProjectionService(projection_type="daily")
@@ -843,18 +882,9 @@ async def chat(
                 if len(type_df) > 0:
                     pickup_df = type_df
 
-            # Filter by date for daily pickups
-            if projection_type == "daily" and 'Date' in pickup_df.columns:
-                from datetime import date, timedelta
-                target_date = date.today() + timedelta(days=1 if use_tomorrow else 0)
-                try:
-                    pickup_df_copy = pickup_df.copy()
-                    pickup_df_copy['_parsed_date'] = pd.to_datetime(pickup_df_copy['Date'], errors='coerce').dt.date
-                    date_filtered = pickup_df_copy[pickup_df_copy['_parsed_date'] == target_date]
-                    if len(date_filtered) > 0:
-                        pickup_df = date_filtered
-                except Exception as e:
-                    logger.warning(f"Could not filter pickups by date: {e}")
+            # Filter by date for daily pickups (EST, with fallback to most recent date)
+            if projection_type == "daily":
+                pickup_df = _filter_daily_df_by_date(pickup_df, use_tomorrow=use_tomorrow)
 
             # Platform-aware: build set of owned player IDs
             owned_ids = get_owned_ids()
@@ -1359,9 +1389,16 @@ async def chat(
 
         def generate_daily_start_sit(target_team: str, use_tomorrow: bool = False) -> str:
             """Generate Daily Start/Sit - shows user's team with today's/tomorrow's projections"""
-            global _daily_projections_df
+            global _daily_projections_df, _daily_cache_date
 
             day_label = "Tomorrow" if use_tomorrow else "Today"
+
+            # Invalidate daily cache if EST date has changed
+            today_est = _get_target_date(False)
+            if _daily_cache_date != today_est:
+                _daily_projections_df = None
+                _daily_cache_date = today_est
+                logger.info(f"Daily cache invalidated for new date: {today_est}")
 
             # Fetch daily projections if not cached
             if _daily_projections_df is None:
@@ -1381,22 +1418,8 @@ async def chat(
                 if len(type_df) > 0:
                     daily_df = type_df
 
-            # Filter by date (today or tomorrow)
-            from datetime import date, timedelta
-            target_date = date.today() + timedelta(days=1 if use_tomorrow else 0)
-
-            if 'Date' in daily_df.columns:
-                try:
-                    daily_df_dated = daily_df.copy()
-                    daily_df_dated['_parsed_date'] = pd.to_datetime(daily_df_dated['Date'], errors='coerce').dt.date
-                    date_filtered = daily_df_dated[daily_df_dated['_parsed_date'] == target_date]
-                    if len(date_filtered) > 0:
-                        daily_df = date_filtered
-                        logger.info(f"Filtered daily projections to {target_date}: {len(daily_df)} rows")
-                    else:
-                        logger.warning(f"No daily projections found for {target_date}, using all dates")
-                except Exception as e:
-                    logger.warning(f"Could not filter by date: {e}")
+            # Filter by date (EST, with fallback to most recent date in data)
+            daily_df = _filter_daily_df_by_date(daily_df, use_tomorrow=use_tomorrow)
 
             matched_team = find_team_name(target_team)
             if not matched_team:
