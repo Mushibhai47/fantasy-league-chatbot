@@ -67,7 +67,20 @@ function setupEventListeners() {
         document.getElementById('file-input').click();
     });
     document.getElementById('file-input').addEventListener('change', handleFileSelect);
-    document.getElementById('start-chat-btn').addEventListener('click', showChatScreen);
+    document.getElementById('start-chat-btn').addEventListener('click', () => {
+        // Save team and league type selections before entering chat
+        const teamSel = document.getElementById('team-selector');
+        if (teamSel && teamSel.value) {
+            state.selectedTeam = teamSel.value;
+            localStorage.setItem('razzball_selected_team', teamSel.value);
+        }
+        const ltSel = document.getElementById('league-type-selector');
+        if (ltSel && ltSel.value) {
+            state.selectedLeagueType = ltSel.value;
+            localStorage.setItem('razzball_league_type', ltSel.value);
+        }
+        showChatScreen();
+    });
 
     // Chat screen buttons
     document.getElementById('send-btn').addEventListener('click', handleSendMessage);
@@ -355,13 +368,16 @@ async function uploadFile(file) {
 
         showStatus(statusEl, `✅ Success! Loaded ${data.total_players} players from your league`, 'success');
 
-        setTimeout(async () => {
+        // Populate teams immediately from upload response (eliminates race condition)
+        if (data.teams && data.teams.length > 0) {
+            populateTeamSelector(data.teams);
+        }
+
+        setTimeout(() => {
             showSetupScreen('ready');
             // Restore league type selector to saved value
             const ltSelector = document.getElementById('league-type-selector');
             if (ltSelector) ltSelector.value = state.selectedLeagueType;
-            // Load teams after showing the screen
-            await loadTeamsForSelector();
         }, 1500);
 
     } catch (error) {

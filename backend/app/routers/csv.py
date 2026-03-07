@@ -83,6 +83,12 @@ async def upload_csv(
             db.add(roster)
         db.commit()
 
+        # Build team list directly from roster entries (no extra DB query needed)
+        team_owners = sorted(set(
+            r.team_owner for r in roster_entries
+            if r.team_owner and r.team_owner != 'Free Agent'
+        ))
+
         # Return response
         return LeagueResponse(
             id=league.id,
@@ -90,7 +96,8 @@ async def upload_csv(
             total_players=len(players_data),
             owned_players=owned_count,
             free_agents=free_agent_count,
-            uploaded_at=league.uploaded_at
+            uploaded_at=league.uploaded_at,
+            teams=team_owners
         )
 
     except Exception as e:
@@ -184,7 +191,7 @@ async def get_teams(
 async def get_league_types():
     """Return the available Razzball projection league types"""
     return {
-        "league_types": ["MLB12", "MLB15", "MLB10", "AL12", "NL12"],
+        "league_types": ["MLB12", "MLB12_5X5OBP", "MLB12_6X6OBP", "MLB12_6X6HLD", "MLB12_6X6QS", "MLB15", "MLB15_5X5OBP", "MLB10", "AL12", "NL12"],
         "default": "MLB12"
     }
 

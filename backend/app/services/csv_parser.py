@@ -147,9 +147,17 @@ class CSVParser:
             # Owner column contains team owner name OR is empty for free agents
             owner = row['Owner'] if pd.notna(row['Owner']) and row['Owner'].strip() != '' else 'Free Agent'
 
+            # Convert "Last, First" → "First Last"
+            raw_name = str(row['Players']).strip()
+            if ',' in raw_name:
+                parts = raw_name.split(',', 1)
+                name = f"{parts[1].strip()} {parts[0].strip()}"
+            else:
+                name = raw_name
+
             player = {
                 'nfbc_id': int(row['id']),
-                'name': row['Players'],
+                'name': name,
                 'mlb_team': row['Team'],
                 'position': row['Pos'],
                 'owner': owner,

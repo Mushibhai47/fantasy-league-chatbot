@@ -31,6 +31,7 @@ class LeagueResponse(BaseModel):
     owned_players: int
     free_agents: int
     uploaded_at: datetime
+    teams: List[str] = []
 
     class Config:
         from_attributes = True

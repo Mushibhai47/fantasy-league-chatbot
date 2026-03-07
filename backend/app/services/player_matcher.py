@@ -149,6 +149,10 @@ class PlayerMatcher:
                 player.nfbc_id = player_data['nfbc_id']
             if player_data.get('cbs_player_name') and not player.cbs_player_name:
                 player.cbs_player_name = player_data['cbs_player_name']
+            # Fix legacy "Last, First" NFBC names if new name is already normalized
+            new_name = player_data.get('name', '')
+            if ',' in player.name and new_name and ',' not in new_name:
+                player.name = new_name
             self.db.commit()
             return player
 

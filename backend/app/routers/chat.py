@@ -125,7 +125,7 @@ async def chat(
 
         # Build fast lookup dictionaries from cache (by NFBCID, FantraxID, and name)
         # Detect requested league type — frontend selection takes priority, then message keyword
-        AVAILABLE_LEAGUE_TYPES = ["MLB12", "MLB15", "MLB10", "AL12", "NL12"]
+        AVAILABLE_LEAGUE_TYPES = ["MLB12", "MLB12_5X5OBP", "MLB12_6X6OBP", "MLB12_6X6HLD", "MLB12_6X6QS", "MLB15", "MLB15_5X5OBP", "MLB10", "AL12", "NL12"]
         DEFAULT_LEAGUE_TYPE = "MLB12"
 
         import re
