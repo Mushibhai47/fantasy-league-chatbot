@@ -178,6 +178,11 @@ async def chat(
                     if overall and str(overall) not in ('nan', 'None', ''):
                         dollar_parts.append(f"${overall}")
 
+                    # Points value (for points leagues)
+                    pts = row.get('PTS', '')
+                    if pts and str(pts) not in ('nan', 'None', ''):
+                        dollar_parts.append(f"PTS:{pts}")
+
                     # Per-game value
                     per_game = row.get('$/G$', '')
                     if per_game and str(per_game) not in ('nan', 'None', ''):
@@ -401,7 +406,7 @@ async def chat(
 
         def parse_dollar_categories(dollar_val_str):
             """Parse dollar value string to extract overall $ and category $"""
-            result = {'$': None}
+            result = {'$': None, 'PTS': None}
             for cat in ALL_CATS:
                 result[cat] = None
             if not dollar_val_str:
@@ -411,6 +416,13 @@ async def chat(
             if overall_match:
                 try:
                     result['$'] = float(overall_match.group(1))
+                except ValueError:
+                    pass
+            # Extract PTS value: "PTS:7.5"
+            pts_match = _re.search(r'PTS:(-?[\d.]+)', dollar_val_str)
+            if pts_match:
+                try:
+                    result['PTS'] = float(pts_match.group(1))
                 except ValueError:
                     pass
             # Extract category values: "$R:1.2", "$HR:-0.5", etc.
@@ -470,7 +482,7 @@ async def chat(
 
                 # Initialize team tracking if needed
                 if owner not in teams_cat_dollars:
-                    teams_cat_dollars[owner] = {'h_$': [], 'p_$': []}
+                    teams_cat_dollars[owner] = {'h_$': [], 'p_$': [], 'pts_vals': []}
                     for cat in ALL_CATS:
                         teams_cat_dollars[owner][cat] = []
 
@@ -479,6 +491,10 @@ async def chat(
                     teams_cat_dollars[owner]['h_count'] = 0
                     teams_cat_dollars[owner]['sp_count'] = 0
                     teams_cat_dollars[owner]['rp_count'] = 0
+
+                numeric_pts = parsed.get('PTS')
+                if numeric_pts is not None:
+                    teams_cat_dollars[owner]['pts_vals'].append(numeric_pts)
 
                 if is_pitcher:
                     if owner not in teams_pitchers:
@@ -532,6 +548,7 @@ async def chat(
             p_dollars = cd.get('p_$', [])
             h_sum = sum(d for d in h_dollars if d >= 1.0)
             p_sum = sum(d for d in p_dollars if d >= 1.0)
+            pts_vals = cd.get('pts_vals', [])
             totals = {
                 'hitting': round(h_sum, 1),
                 'pitching': round(p_sum, 1),
@@ -540,6 +557,7 @@ async def chat(
                 'h_count': cd.get('h_count', 0),
                 'sp_count': cd.get('sp_count', 0),
                 'rp_count': cd.get('rp_count', 0),
+                'PTS': round(sum(pts_vals), 1),
             }
             # Sum each category ($1+ players only - already filtered during collection)
             for cat in ALL_CATS:
@@ -590,14 +608,21 @@ async def chat(
             lines = []
             lines.append(f"**League Overview $ ({requested_type}) - {num_teams} Teams**\n")
             # Build header dynamically - only include non-zero columns
-            header_parts = ['Owner', '$', 'H', 'SP', 'RP']
+            has_pts = any(team_totals[t].get('PTS', 0) != 0 for t in ranked_teams)
+            header_parts = ['Owner', '$']
+            if has_pts:
+                header_parts.append('PTS')
+            header_parts += ['H', 'SP', 'RP']
             for cat in active_cats:
                 header_parts.append(f'${cat}')
             lines.append('| ' + ' | '.join(header_parts) + ' |')
             lines.append('|' + '---|' * len(header_parts))
             for team_name in ranked_teams:
                 t = team_totals[team_name]
-                row_parts = [team_name, str(t['total']), str(t['h_count']), str(t['sp_count']), str(t['rp_count'])]
+                row_parts = [team_name, str(t['total'])]
+                if has_pts:
+                    row_parts.append(str(t.get('PTS', 0)))
+                row_parts += [str(t['h_count']), str(t['sp_count']), str(t['rp_count'])]
                 for cat in active_cats:
                     row_parts.append(str(t[cat]))
                 lines.append('| ' + ' | '.join(row_parts) + ' |')
@@ -687,7 +712,7 @@ async def chat(
                 # Determine active hitter cats
                 h_cats = [c for c in active_cats if c in HITTER_CATS]
                 lines.append(f"**Hitters ({len(hitters)})**\n")
-                h_header = ['Name', 'Pos', 'Team', '$', '$/G']
+                h_header = ['Name', 'Pos', 'Team', '$', 'PTS', '$/G']
                 for cat in h_cats:
                     h_header.append(f'${cat}')
                 lines.append('| ' + ' | '.join(h_header) + ' |')
@@ -696,7 +721,7 @@ async def chat(
                 # Parse each hitter's data from the player string
                 hitter_rows = []
                 for p_str in hitters:
-                    # Format: "Name | Pos: SP | Team: NYY | $12.3 $/G:5.2 $R:1.2 $HR:3.4 ..."
+                    # Format: "Name | Pos: SP | Team: NYY | $12.3 PTS:7.5 $/G:5.2 $R:1.2 $HR:3.4 ..."
                     parts = p_str.split(' | ')
                     name = parts[0] if len(parts) > 0 else '?'
                     pos = parts[1].replace('Pos: ', '') if len(parts) > 1 else '?'
@@ -706,6 +731,10 @@ async def chat(
                     # Extract overall $
                     overall_match = _re.search(r'^\$(-?[\d.]+)', dollar_part)
                     overall = float(overall_match.group(1)) if overall_match else 0.0
+
+                    # Extract PTS
+                    pts_match = _re.search(r'PTS:(-?[\d.]+)', dollar_part)
+                    pts_val = pts_match.group(1) if pts_match else ''
 
                     # Extract $/G
                     pg_match = _re.search(r'\$/G:(-?[\d.]+)', dollar_part)
@@ -717,7 +746,7 @@ async def chat(
                         cat_match = _re.search(rf'\${cat}:(-?[\d.]+)', dollar_part)
                         cat_vals[cat] = cat_match.group(1) if cat_match else '0'
 
-                    row = [name, pos, team, str(overall), per_game]
+                    row = [name, pos, team, str(overall), pts_val, per_game]
                     for cat in h_cats:
                         row.append(cat_vals[cat])
                     hitter_rows.append((overall, '| ' + ' | '.join(row) + ' |'))
@@ -732,7 +761,7 @@ async def chat(
             if pitchers:
                 p_cats = [c for c in active_cats if c in PITCHER_CATS]
                 lines.append(f"\n**Pitchers ({len(pitchers)})**\n")
-                p_header = ['Name', 'Pos', 'Team', '$', '$/G']
+                p_header = ['Name', 'Pos', 'Team', '$', 'PTS', '$/G']
                 for cat in p_cats:
                     p_header.append(f'${cat}')
                 lines.append('| ' + ' | '.join(p_header) + ' |')
@@ -749,6 +778,10 @@ async def chat(
                     overall_match = _re.search(r'^\$(-?[\d.]+)', dollar_part)
                     overall = float(overall_match.group(1)) if overall_match else 0.0
 
+                    # Extract PTS
+                    pts_match = _re.search(r'PTS:(-?[\d.]+)', dollar_part)
+                    pts_val = pts_match.group(1) if pts_match else ''
+
                     # Extract $/G
                     pg_match = _re.search(r'\$/G:(-?[\d.]+)', dollar_part)
                     per_game = pg_match.group(1) if pg_match else ''
@@ -758,7 +791,7 @@ async def chat(
                         cat_match = _re.search(rf'\${cat}:(-?[\d.]+)', dollar_part)
                         cat_vals[cat] = cat_match.group(1) if cat_match else '0'
 
-                    row = [name, pos, team, str(overall), per_game]
+                    row = [name, pos, team, str(overall), pts_val, per_game]
                     for cat in p_cats:
                         row.append(cat_vals[cat])
                     pitcher_rows.append((overall, '| ' + ' | '.join(row) + ' |'))
@@ -943,6 +976,12 @@ async def chat(
                 if len(type_df) > 0:
                     pickup_df = type_df
 
+            # Filter by AL/NL for AL12/NL12 league types
+            if requested_type == 'AL12' and 'League' in pickup_df.columns:
+                pickup_df = pickup_df[pickup_df['League'] == 'AL']
+            elif requested_type == 'NL12' and 'League' in pickup_df.columns:
+                pickup_df = pickup_df[pickup_df['League'] == 'NL']
+
             # Filter by date for daily pickups (EST, with fallback to most recent date)
             if projection_type == "daily":
                 pickup_df = _filter_daily_df_by_date(pickup_df, use_tomorrow=use_tomorrow)
@@ -1039,7 +1078,7 @@ async def chat(
                     if not is_pitcher_group:
                         # Hitter header
                         header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                                  '$', '$OBP$', '$MT', '$FS',
+                                  '$', 'PTS', '$OBP$', '$MT', '$FS',
                                   'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG',
                                   'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
                                   'Games', 'H/A', 'R/L', 'Timestamp']
@@ -1055,6 +1094,7 @@ async def chat(
                                 _get_wof(r),
                                 _clean_str(r.get('Opp', '')),
                                 str(round(fa['dollar'], 1)),
+                                fmt_stat(r.get('PTS', '')),
                                 fmt_stat(r.get('$/G$', '')),
                                 fmt_stat(r.get('$ MT$', '')),
                                 fmt_stat(r.get('$ FS$', '')),
@@ -1081,7 +1121,7 @@ async def chat(
                     else:
                         # Pitcher header
                         header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                                  '$', '$OBP$', '$MT', '$FS',
+                                  '$', 'PTS', '$OBP$', '$MT', '$FS',
                                   'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR_P',
                                   'ERA', 'WHIP',
                                   'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
@@ -1098,6 +1138,7 @@ async def chat(
                                 _get_wof(r),
                                 _clean_str(r.get('Opp', '')),
                                 str(round(fa['dollar'], 1)),
+                                fmt_stat(r.get('PTS', '')),
                                 fmt_stat(r.get('$/G$', '')),
                                 fmt_stat(r.get('$ MT$', '')),
                                 fmt_stat(r.get('$ FS$', '')),
@@ -1137,7 +1178,7 @@ async def chat(
                             header.append('Pitcher')
                         if has_throws_col:
                             header.append('R/L')
-                        header += ['$', 'G', 'PA', 'R', 'HR', 'RBI', 'SB',
+                        header += ['$', 'PTS', 'G', 'PA', 'R', 'HR', 'RBI', 'SB',
                                    'AVG', 'OBP', 'SLG',
                                    'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
                         lines.append('| ' + ' | '.join(header) + ' |')
@@ -1158,6 +1199,7 @@ async def chat(
                                 row_parts.append(_clean_str(r.get('Throws', '')))
                             row_parts += [
                                 str(round(fa['dollar'], 1)),
+                                fmt_stat(r.get('PTS', '')),
                                 fmt_stat(r.get('G', '')),
                                 fmt_stat(r.get('PA', '')),
                                 fmt_stat(r.get('R', '')),
@@ -1175,8 +1217,8 @@ async def chat(
                             ]
                             lines.append('| ' + ' | '.join(row_parts) + ' |')
                     else:
-                        # Pitcher header: Name, Team, H, Pos, Y! Pos, Date, Opp, $, GS, QS, W, L, IP, H, ER, K, BB, HR, ERA, WHIP, R%, ROS12, $/G, ROS15, Timestamp
-                        header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', '$',
+                        # Pitcher header: Name, Team, H, Pos, Y! Pos, Date, Opp, $, PTS, GS, QS, W, L, IP, H, ER, K, BB, HR, ERA, WHIP, R%, ROS12, $/G, ROS15, Timestamp
+                        header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', '$', 'PTS',
                                   'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                                   'ERA', 'WHIP',
                                   'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
@@ -1192,6 +1234,7 @@ async def chat(
                                 _get_date_str(r),
                                 _clean_str(r.get('Opp', '')),
                                 str(round(fa['dollar'], 1)),
+                                fmt_stat(r.get('PTS', '')),
                                 fmt_stat(r.get('GS', '')),
                                 fmt_stat(r.get('QS', '')),
                                 fmt_stat(r.get('W', '')),
@@ -1234,6 +1277,12 @@ async def chat(
                 type_df = weekly_df[weekly_df['LeagueType'] == requested_type]
                 if len(type_df) > 0:
                     weekly_df = type_df
+
+            # Filter by AL/NL for AL12/NL12
+            if requested_type == 'AL12' and 'League' in weekly_df.columns:
+                weekly_df = weekly_df[weekly_df['League'] == 'AL']
+            elif requested_type == 'NL12' and 'League' in weekly_df.columns:
+                weekly_df = weekly_df[weekly_df['League'] == 'NL']
 
             matched_team = find_team_name(target_team)
             if not matched_team:
@@ -1334,10 +1383,12 @@ async def chat(
                     rl_weekly = _get_rl_weekly(weekly_row)
                     ts_weekly = _fmt_ts(weekly_row.get('Timestamp', ''))
 
+                    pts_weekly = fmt_stat(weekly_row.get('PTS', ''))
+
                     if is_pitcher:
                         pitcher_rows.append((dollar, [
                             name, team, handedness, pos, y_pos, wof_str, opp,
-                            str(round(dollar, 1)),
+                            str(round(dollar, 1)), pts_weekly,
                             obp_dollar, mt_dollar, fs_dollar,
                             fmt_stat(weekly_row.get('GS', '')), fmt_stat(weekly_row.get('QS', '')),
                             fmt_stat(weekly_row.get('W', '')), fmt_stat(weekly_row.get('L', '')),
@@ -1354,7 +1405,7 @@ async def chat(
                     else:
                         hitter_rows.append((dollar, [
                             name, team, handedness, pos, y_pos, wof_str, opp,
-                            str(round(dollar, 1)),
+                            str(round(dollar, 1)), pts_weekly,
                             obp_dollar, mt_dollar, fs_dollar,
                             str(games),
                             fmt_stat(weekly_row.get('PA', '')),
@@ -1400,7 +1451,7 @@ async def chat(
             if hitter_rows:
                 lines.append(f"**Hitters ({len(hitter_rows)})**\n")
                 h_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                            '$', '$OBP$', '$MT', '$FS',
+                            '$', 'PTS', '$OBP$', '$MT', '$FS',
                             'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG',
                             'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
                             'Games', 'H/A', 'R/L', 'Timestamp']
@@ -1413,7 +1464,7 @@ async def chat(
             if pitcher_rows:
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
                 p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                            '$', '$OBP$', '$MT', '$FS',
+                            '$', 'PTS', '$OBP$', '$MT', '$FS',
                             'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR_P',
                             'ERA', 'WHIP',
                             'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
@@ -1475,6 +1526,12 @@ async def chat(
                 if len(type_df) > 0:
                     daily_df = type_df
 
+            # Filter by AL/NL for AL12/NL12
+            if requested_type == 'AL12' and 'League' in daily_df.columns:
+                daily_df = daily_df[daily_df['League'] == 'AL']
+            elif requested_type == 'NL12' and 'League' in daily_df.columns:
+                daily_df = daily_df[daily_df['League'] == 'NL']
+
             # Filter by date (EST, with fallback to most recent date in data)
             daily_df = _filter_daily_df_by_date(daily_df, use_tomorrow=use_tomorrow)
 
@@ -1535,10 +1592,12 @@ async def chat(
                     y_pos_d = _clean_str(daily_row.get('Y! Pos', ''))
                     date_d = _get_date_str(daily_row)
 
+                    pts_daily = fmt_stat(daily_row.get('PTS', ''))
+
                     if is_pitcher:
                         pitcher_rows.append((dollar, [
                             name, team, handedness_d, pos, y_pos_d, date_d, opp,
-                            str(round(dollar, 1)),
+                            str(round(dollar, 1)), pts_daily,
                             fmt_stat(daily_row.get('GS', '')), fmt_stat(daily_row.get('QS', '')),
                             fmt_stat(daily_row.get('W', '')), fmt_stat(daily_row.get('L', '')),
                             fmt_stat(daily_row.get('IP', '')),
@@ -1556,7 +1615,7 @@ async def chat(
                         hitter_rows.append((dollar, [
                             name, team, handedness_d, pos, y_pos_d, date_d, opp,
                             pitcher_name_d, throws_d,
-                            str(round(dollar, 1)),
+                            str(round(dollar, 1)), pts_daily,
                             fmt_stat(daily_row.get('G', '')),
                             fmt_stat(daily_row.get('PA', '')),
                             fmt_stat(daily_row.get('R', '')), fmt_stat(daily_row.get('HR', '')),
@@ -1600,7 +1659,7 @@ async def chat(
             if hitter_rows:
                 lines.append(f"**Hitters ({len(hitter_rows)})**\n")
                 h_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp',
-                            'Pitcher', 'R/L', '$',
+                            'Pitcher', 'R/L', '$', 'PTS',
                             'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG',
                             'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
                 lines.append('| ' + ' | '.join(h_header) + ' |')
@@ -1611,7 +1670,7 @@ async def chat(
             # Pitchers table
             if pitcher_rows:
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
-                p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', '$',
+                p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', '$', 'PTS',
                             'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                             'ERA', 'WHIP',
                             'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']

@@ -110,10 +110,17 @@ class PlayerMatcher:
         # Fallback to fuzzy name matching
         name = player_data.get('name')
         if name:
+            # CBS-only players (no IDs) use a higher threshold to prevent false positives
+            # like "Colby Thomas" matching "Cody Thomas"
+            is_cbs_only = (player_data.get('cbs_player_name') and
+                           not player_data.get('fantrax_id') and
+                           not player_data.get('nfbc_id'))
+            name_threshold = 92 if is_cbs_only else 85
             match = self.match_by_name(
                 name=name,
                 mlb_team=player_data.get('mlb_team'),
-                position=player_data.get('position')
+                position=player_data.get('position'),
+                threshold=name_threshold
             )
             if match:
                 return match
@@ -153,6 +160,9 @@ class PlayerMatcher:
             new_name = player_data.get('name', '')
             if ',' in player.name and new_name and ',' not in new_name:
                 player.name = new_name
+            # Update position if existing player has none and new data has it
+            if player_data.get('position') and not player.position:
+                player.position = player_data['position']
             self.db.commit()
             return player
 
