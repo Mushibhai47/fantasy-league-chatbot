@@ -146,7 +146,18 @@ class PlayerMatcher:
 
         # Also try CBS name if provided
         if not player and player_data.get('cbs_player_name'):
-            player = self.match_by_cbs_name(player_data['cbs_player_name'])
+            candidate = self.match_by_cbs_name(player_data['cbs_player_name'])
+            if candidate:
+                # Verify names are actually similar — prevents stale CBS names stored on wrong
+                # players (e.g., "Cody Thomas" incorrectly tagged with "Colby Thomas OF | ATH")
+                provided_name = player_data.get('name', '')
+                name_similarity = fuzz.ratio(provided_name.lower(), candidate.name.lower())
+                if name_similarity >= 75:
+                    player = candidate
+                else:
+                    # Clear the incorrect CBS name from the wrong player so it won't recur
+                    candidate.cbs_player_name = None
+                    self.db.commit()
 
         if player:
             # Update IDs if we have new ones

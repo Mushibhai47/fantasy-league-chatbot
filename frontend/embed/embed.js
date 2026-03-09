@@ -278,10 +278,35 @@ async function loadTeamsForSelector() {
         const response = await fetch(`${API_BASE_URL}/csv/${state.leagueId}/teams`);
         if (response.ok) {
             const data = await response.json();
-            populateTeamSelector(data.teams);
+            if (data.teams && data.teams.length > 0) {
+                populateTeamSelector(data.teams);
+            } else {
+                // League data was cleared (server restart/redeploy wiped the DB)
+                state.leagueId = null;
+                localStorage.removeItem('razzball_league_id');
+                localStorage.removeItem('razzball_selected_team');
+                showSetupScreen('upload');
+                showStatus(
+                    document.getElementById('upload-status'),
+                    'ℹ️ League data was cleared by a server update. Please re-upload your CSV.',
+                    'info'
+                );
+            }
+        } else {
+            // League not found (404) — stale leagueId
+            state.leagueId = null;
+            localStorage.removeItem('razzball_league_id');
+            localStorage.removeItem('razzball_selected_team');
+            showSetupScreen('upload');
+            showStatus(
+                document.getElementById('upload-status'),
+                'ℹ️ League data was cleared by a server update. Please re-upload your CSV.',
+                'info'
+            );
         }
     } catch (e) {
         console.warn('Could not fetch teams:', e);
+        // Network error — don't clear, could be temporary
     }
 }
 
