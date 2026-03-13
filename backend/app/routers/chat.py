@@ -1031,6 +1031,15 @@ async def chat(
             # Platform-aware: build set of owned player IDs using the same id_col
             owned_ids = get_owned_ids(id_col)
 
+            # For CBS leagues: also build name-based owned set as fallback.
+            # CBS players have no NFBC/Fantrax IDs, so if CBSSportsName isn't in the API
+            # projection data, owned_ids will be empty and all players appear as free agents.
+            owned_names = set()
+            if league.league_type == 'cbs' and id_col != 'CBSSportsName':
+                for roster_entry in owned_rosters:
+                    if roster_entry.player and roster_entry.player.name:
+                        owned_names.add(roster_entry.player.name.lower().strip())
+
             # Filter projections to only free agents (not owned)
             fa_rows = []
             if id_col in pickup_df.columns:
@@ -1040,6 +1049,11 @@ async def chat(
                     if id_col == 'CBSSportsName' and pid:
                         pid = _normalize_cbs_name(pid)
                     if pid and pid not in ('nan', 'None', '') and pid not in owned_ids:
+                        # CBS name fallback: skip players whose name matches an owned player
+                        if owned_names:
+                            api_name = _re.sub(r'\[player id=\d+\]|\[/player\]', '', str(row.get('Name', ''))).strip().lower()
+                            if api_name in owned_names:
+                                continue
                         dollar_val = row.get('$', 0)
                         try:
                             dollar_val = float(dollar_val) if str(dollar_val) not in ('nan', 'None', '') else 0.0

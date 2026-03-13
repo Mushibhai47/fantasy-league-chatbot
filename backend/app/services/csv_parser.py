@@ -114,7 +114,8 @@ class CSVParser:
                 mlb_team = mlb_team.strip()
 
                 # Extract position codes before stripping (e.g. "Shohei Ohtani SP,RP" → "SP,RP")
-                pos_match = re.search(r'\s+([A-Z][A-Z0-9,/]+)\s*$', name_pos)
+                # Use [A-Z0-9][A-Z0-9,/]* to also capture single-char (P, C, U) and digit-starting (1B, 2B, 3B)
+                pos_match = re.search(r'\s+([A-Z0-9][A-Z0-9,/]*)\s*$', name_pos)
                 if pos_match:
                     position = pos_match.group(1).strip()
                     # Normalize: take first recognized position token
@@ -125,7 +126,7 @@ class CSVParser:
                             break
 
                 # Extract just the name (before position abbreviations)
-                name = re.sub(r'\s+[A-Z][A-Z0-9,/]+\s*$', '', name_pos).strip()
+                name = re.sub(r'\s+[A-Z0-9][A-Z0-9,/]*\s*$', '', name_pos).strip()
             else:
                 name = player_str.strip()
                 mlb_team = None
