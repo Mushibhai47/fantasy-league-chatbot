@@ -226,7 +226,7 @@ class PlayerMatcher:
             # No commit here — caller does a single commit at the end
             return player
 
-        # Create new player
+        # Create new player (no flush here — caller does a single db.flush() after the loop)
         new_player = Player(
             name=player_data['name'],
             team=player_data.get('mlb_team'),
@@ -236,6 +236,5 @@ class PlayerMatcher:
             cbs_player_name=player_data.get('cbs_player_name'),
         )
         self.db.add(new_player)
-        self.db.flush()  # Assigns the auto-generated ID without a full commit
         self._add_to_cache(new_player)
         return new_player

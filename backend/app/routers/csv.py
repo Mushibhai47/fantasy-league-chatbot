@@ -54,17 +54,26 @@ async def upload_csv(
         db.add(league)
         db.flush()
 
-        # Match and store players (optimized with bulk inserts)
+        # Match and store players — all in memory, one flush at the end
         matcher = PlayerMatcher(db)
         owned_count = 0
         free_agent_count = 0
-        roster_entries = []
+        player_owner_pairs = []  # (Player, player_data) — IDs populated after single flush
 
         for player_data in players_data:
-            # Get or create player
             player = matcher.get_or_create_player(player_data)
+            player_owner_pairs.append((player, player_data))
+            if player_data['owner'] == 'Free Agent':
+                free_agent_count += 1
+            else:
+                owned_count += 1
 
-            # Create roster entry object (don't add to session yet)
+        # Single flush: assigns auto-generated IDs to all newly created players at once
+        db.flush()
+
+        # Now build roster entries (player.id is available after the flush)
+        roster_entries = []
+        for player, player_data in player_owner_pairs:
             roster = Roster(
                 league_id=league.id,
                 player_id=player.id,
@@ -73,12 +82,6 @@ async def upload_csv(
             )
             roster_entries.append(roster)
 
-            if player_data['owner'] == 'Free Agent':
-                free_agent_count += 1
-            else:
-                owned_count += 1
-
-        # Add roster entries properly (bulk_save_objects has type conversion issues)
         for roster in roster_entries:
             db.add(roster)
         db.commit()
