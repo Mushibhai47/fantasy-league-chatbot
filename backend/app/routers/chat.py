@@ -176,6 +176,7 @@ async def chat(
 
         nfbc_lookup = {}  # NFBCID -> full projection data string
         fantrax_lookup = {}  # FantraxID -> full projection data string
+        cbs_name_lookup = {}  # normalized CBSSportsName -> full projection data string
         name_lookup = {}  # name -> full projection data string
         proj_pos_lookup = {}  # NFBCID/FantraxID -> Pos from projection data (for display)
 
@@ -257,6 +258,13 @@ async def chat(
                         if fantrax_id and str(fantrax_id) not in ('nan', 'None', ''):
                             fantrax_lookup[str(fantrax_id)] = dollar_str
 
+                        # Store by normalized CBSSportsName (most reliable for CBS leagues)
+                        cbs_sn = str(row.get('CBSSportsName', ''))
+                        if cbs_sn and cbs_sn not in ('nan', 'None', ''):
+                            cbs_key = _normalize_cbs_name(cbs_sn)
+                            if cbs_key:
+                                cbs_name_lookup[cbs_key] = dollar_str
+
                         # Store by name (fallback)
                         proj_name = str(row.get('Name', '')).lower()
                         proj_name = re.sub(r'\[player id=\d+\]|\[/player\]', '', proj_name).strip()
@@ -280,6 +288,14 @@ async def chat(
                 val = fantrax_lookup.get(str(player_obj.fantrax_id), '')
                 if val:
                     return f" [{val}]"
+
+            # Try CBSSportsName (most reliable for CBS leagues — handles name mismatches like Colby/Cody)
+            if player_obj and player_obj.cbs_player_name:
+                cbs_key = _normalize_cbs_name(str(player_obj.cbs_player_name))
+                if cbs_key:
+                    val = cbs_name_lookup.get(cbs_key, '')
+                    if val:
+                        return f" [{val}]"
 
             # Fallback to name matching
             name_lower = player_name.lower().strip()
