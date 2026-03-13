@@ -40,10 +40,13 @@ class PlayerMatcher:
         }
 
     def _add_to_cache(self, player: Player):
-        """Register a newly-created player in the in-memory indexes."""
-        if self._all_players is None:
-            return
-        self._all_players.append(player)
+        """Register a newly-created player in the ID indexes only.
+
+        We intentionally do NOT append to _all_players (the fuzzy-match pool).
+        Adding every new player there would cause O(n²) fuzzy comparisons during
+        a 4000-player CBS upload on a fresh DB — new CBS players can't sensibly
+        match each other via fuzzy name anyway.
+        """
         if player.cbs_player_name:
             self._cbs_name_index[player.cbs_player_name] = player
         if player.fantrax_id:
