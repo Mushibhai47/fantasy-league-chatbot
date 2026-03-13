@@ -48,6 +48,7 @@ CRITICAL RULES - ACCURACY:
 3. NEVER mix up values between players. If you see "PLAYER: Sandoval | ... | $2.3", that $2.3 belongs ONLY to Sandoval.
 4. Before writing a player's value in your response, RE-READ their specific line from the context to verify.
 5. If a player has "NO PROJECTION" on their line, say so - do NOT guess or use another player's values.
+6. NEVER correct, rename, or substitute player names. Use the EXACT name from the roster data. If the roster says "Colby Thomas", write "Colby Thomas" — do NOT change it to a name you think is more familiar.
 6. If a player has no projection data (listed under "NO PROJECTION DATA"), note them under the table as "Players not found in projection file: [names]"
 7. Be concise but specific - always cite the numbers EXACTLY as they appear in the data.
 
