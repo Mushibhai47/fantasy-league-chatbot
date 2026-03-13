@@ -1,27 +1,82 @@
 """Player Matching Service - Match CSV players to database using IDs or fuzzy matching"""
 from sqlalchemy.orm import Session
 from fuzzywuzzy import fuzz
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from app.models import Player
 
 
 class PlayerMatcher:
-    """Match players from CSVs to database"""
+    """Match players from CSVs to database.
+
+    Loads all existing players from the DB into memory once (per matcher instance)
+    so that fuzzy-matching 4 000+ CBS players doesn't require thousands of DB round-trips.
+    """
 
     def __init__(self, db: Session):
         self.db = db
+        # Lazily populated by _ensure_cache()
+        self._all_players: Optional[List[Player]] = None
+        self._cbs_name_index: Dict[str, Player] = {}
+        self._fantrax_id_index: Dict[str, Player] = {}
+        self._nfbc_id_index: Dict[int, Player] = {}
+
+    # ------------------------------------------------------------------
+    # Cache management
+    # ------------------------------------------------------------------
+
+    def _ensure_cache(self):
+        """Load all players from DB into memory (once per upload session)."""
+        if self._all_players is not None:
+            return
+        self._all_players = self.db.query(Player).all()
+        self._cbs_name_index = {
+            p.cbs_player_name: p for p in self._all_players if p.cbs_player_name
+        }
+        self._fantrax_id_index = {
+            p.fantrax_id: p for p in self._all_players if p.fantrax_id
+        }
+        self._nfbc_id_index = {
+            p.nfbc_id: p for p in self._all_players if p.nfbc_id
+        }
+
+    def _add_to_cache(self, player: Player):
+        """Register a newly-created player in the in-memory indexes."""
+        if self._all_players is None:
+            return
+        self._all_players.append(player)
+        if player.cbs_player_name:
+            self._cbs_name_index[player.cbs_player_name] = player
+        if player.fantrax_id:
+            self._fantrax_id_index[player.fantrax_id] = player
+        if player.nfbc_id:
+            self._nfbc_id_index[player.nfbc_id] = player
+
+    # ------------------------------------------------------------------
+    # ID lookups (in-memory after first call)
+    # ------------------------------------------------------------------
 
     def match_by_fantrax_id(self, fantrax_id: str) -> Optional[Player]:
         """Match player by Fantrax ID (*05ajh*)"""
-        return self.db.query(Player).filter(Player.fantrax_id == fantrax_id).first()
+        self._ensure_cache()
+        return self._fantrax_id_index.get(fantrax_id)
 
     def match_by_nfbc_id(self, nfbc_id: int) -> Optional[Player]:
         """Match player by NFBC ID (11802)"""
-        return self.db.query(Player).filter(Player.nfbc_id == nfbc_id).first()
+        self._ensure_cache()
+        return self._nfbc_id_index.get(nfbc_id)
 
     def match_by_razzball_id(self, razzball_id: int) -> Optional[Player]:
-        """Match player by Razzball ID (RazzID)"""
+        """Match player by Razzball ID (RazzID) — still uses DB (less frequent)"""
         return self.db.query(Player).filter(Player.razzball_id == razzball_id).first()
+
+    def match_by_cbs_name(self, cbs_player_name: str) -> Optional[Player]:
+        """Match player by CBS player name (e.g., 'Aaron Judge OF | NYY')"""
+        self._ensure_cache()
+        return self._cbs_name_index.get(cbs_player_name)
+
+    # ------------------------------------------------------------------
+    # Fuzzy name matching (in-memory)
+    # ------------------------------------------------------------------
 
     def match_by_name(
         self,
@@ -31,43 +86,49 @@ class PlayerMatcher:
         threshold: int = 85
     ) -> Optional[Player]:
         """
-        Match player by fuzzy name matching
+        Match player by fuzzy name matching (runs entirely in Python memory).
 
         Args:
             name: Player name to match
             mlb_team: MLB team (BOS, NYY) - optional for better matching
             position: Position (SP, OF) - optional for better matching
             threshold: Minimum fuzzy match score (0-100)
-
-        Returns:
-            Matched Player or None
         """
-        # Get all players (or filter by team/position if provided)
-        query = self.db.query(Player)
-
-        if mlb_team:
-            query = query.filter(Player.team == mlb_team)
-
-        if position:
-            query = query.filter(Player.position.like(f'%{position}%'))
-
-        candidates = query.all()
+        self._ensure_cache()
+        candidates = self._all_players
 
         if not candidates:
-            # Try without filters
-            candidates = self.db.query(Player).all()
+            return None
+
+        # Narrow candidate list if team/position are supplied
+        if mlb_team:
+            team_candidates = [p for p in candidates if p.team == mlb_team]
+            if not team_candidates:
+                team_candidates = candidates  # fall back to all
+        else:
+            team_candidates = candidates
+
+        if position:
+            pos_candidates = [
+                p for p in team_candidates
+                if p.position and position in p.position
+            ]
+            if not pos_candidates:
+                pos_candidates = team_candidates  # fall back
+
+        else:
+            pos_candidates = team_candidates
 
         # Find best fuzzy match
         best_match = None
         best_score = 0
 
-        for candidate in candidates:
-            # CBS fuzzy match: verify first letter of MLB team matches to reduce false positives
+        for candidate in pos_candidates:
+            # CBS fuzzy match: verify first letter of MLB team matches
             if mlb_team and candidate.team:
                 if mlb_team[0].upper() != candidate.team[0].upper():
                     continue
 
-            # Try different name variations
             scores = [
                 fuzz.ratio(name.lower(), candidate.name.lower()),
                 fuzz.partial_ratio(name.lower(), candidate.name.lower()),
@@ -79,105 +140,93 @@ class PlayerMatcher:
                 best_score = score
                 best_match = candidate
 
-        # Return match if above threshold
-        if best_score >= threshold:
-            return best_match
+        return best_match if best_score >= threshold else None
 
-        return None
+    # ------------------------------------------------------------------
+    # Smart match (ID first, then name)
+    # ------------------------------------------------------------------
 
     def match_player(self, player_data: Dict) -> Optional[Player]:
         """
-        Smart matching - try ID first, then fuzzy name
-
-        Args:
-            player_data: Dict with keys: fantrax_id, nfbc_id, name, mlb_team, position
-
-        Returns:
-            Matched Player or None
+        Smart matching - try ID first, then fuzzy name.
         """
-        # Try Fantrax ID first
         if player_data.get('fantrax_id'):
             match = self.match_by_fantrax_id(player_data['fantrax_id'])
             if match:
                 return match
 
-        # Try NFBC ID
         if player_data.get('nfbc_id'):
             match = self.match_by_nfbc_id(player_data['nfbc_id'])
             if match:
                 return match
 
-        # Fallback to fuzzy name matching
         name = player_data.get('name')
         if name:
-            # CBS-only players (no IDs) use a higher threshold to prevent false positives
-            # like "Colby Thomas" matching "Cody Thomas"
-            is_cbs_only = (player_data.get('cbs_player_name') and
-                           not player_data.get('fantrax_id') and
-                           not player_data.get('nfbc_id'))
+            is_cbs_only = (
+                player_data.get('cbs_player_name') and
+                not player_data.get('fantrax_id') and
+                not player_data.get('nfbc_id')
+            )
             name_threshold = 92 if is_cbs_only else 85
             match = self.match_by_name(
                 name=name,
                 mlb_team=player_data.get('mlb_team'),
                 position=player_data.get('position'),
-                threshold=name_threshold
+                threshold=name_threshold,
             )
             if match:
                 return match
 
         return None
 
-    def match_by_cbs_name(self, cbs_player_name: str) -> Optional[Player]:
-        """Match player by CBS player name (e.g., 'Aaron Judge OF | NYY')"""
-        return self.db.query(Player).filter(Player.cbs_player_name == cbs_player_name).first()
+    # ------------------------------------------------------------------
+    # Get or create
+    # ------------------------------------------------------------------
 
     def get_or_create_player(self, player_data: Dict) -> Player:
         """
-        Try to match existing player, or create new one if not found
-
-        Args:
-            player_data: Dict with player info
-
-        Returns:
-            Player (existing or newly created)
+        Try to match existing player, or create new one if not found.
+        Uses db.flush() instead of db.commit() so the caller can batch-commit.
         """
-        # Try to match first
         player = self.match_player(player_data)
 
         # Also try CBS name if provided
         if not player and player_data.get('cbs_player_name'):
             candidate = self.match_by_cbs_name(player_data['cbs_player_name'])
             if candidate:
-                # Verify names are actually similar — prevents stale CBS names stored on wrong
-                # players (e.g., "Cody Thomas" incorrectly tagged with "Colby Thomas OF | ATH")
                 provided_name = player_data.get('name', '')
                 name_similarity = fuzz.ratio(provided_name.lower(), candidate.name.lower())
                 if name_similarity >= 75:
                     player = candidate
                 else:
-                    # Clear the incorrect CBS name from the wrong player so it won't recur
+                    # Clear the incorrect CBS name from the wrong player
                     candidate.cbs_player_name = None
-                    self.db.commit()
+                    # Remove from index too
+                    old_key = player_data.get('cbs_player_name')
+                    if old_key and self._cbs_name_index.get(old_key) is candidate:
+                        del self._cbs_name_index[old_key]
 
         if player:
-            # Update IDs if we have new ones
+            # Update IDs / names if we have new ones
             if player_data.get('fantrax_id') and not player.fantrax_id:
                 player.fantrax_id = player_data['fantrax_id']
+                self._fantrax_id_index[player.fantrax_id] = player
             if player_data.get('nfbc_id') and not player.nfbc_id:
                 player.nfbc_id = player_data['nfbc_id']
+                self._nfbc_id_index[player.nfbc_id] = player
             if player_data.get('cbs_player_name') and not player.cbs_player_name:
                 player.cbs_player_name = player_data['cbs_player_name']
-            # Fix legacy "Last, First" NFBC names if new name is already normalized
+                self._cbs_name_index[player.cbs_player_name] = player
+            # Fix legacy "Last, First" NFBC names
             new_name = player_data.get('name', '')
             if ',' in player.name and new_name and ',' not in new_name:
                 player.name = new_name
-            # Update position if existing player has none and new data has it
             if player_data.get('position') and not player.position:
                 player.position = player_data['position']
-            self.db.commit()
+            # No commit here — caller does a single commit at the end
             return player
 
-        # Create new player if no match
+        # Create new player
         new_player = Player(
             name=player_data['name'],
             team=player_data.get('mlb_team'),
@@ -187,37 +236,6 @@ class PlayerMatcher:
             cbs_player_name=player_data.get('cbs_player_name'),
         )
         self.db.add(new_player)
-        self.db.commit()
-        self.db.refresh(new_player)
-
+        self.db.flush()  # Assigns the auto-generated ID without a full commit
+        self._add_to_cache(new_player)
         return new_player
-
-
-# Test the matcher
-if __name__ == "__main__":
-    from app.database import SessionLocal, init_db
-
-    init_db()
-    db = SessionLocal()
-    matcher = PlayerMatcher(db)
-
-    # Test data
-    test_players = [
-        {"name": "Aaron Judge", "mlb_team": "NYY", "position": "OF"},
-        {"name": "Shohei Ohtani", "mlb_team": "LAD", "position": "DH"},
-        {"fantrax_id": "*05ajh*", "name": "Garrett Crochet"},
-        {"nfbc_id": 11802, "name": "Andrew Abbott"},
-    ]
-
-    print("\n🧪 Testing Player Matcher\n")
-
-    for test_player in test_players:
-        print(f"Testing: {test_player}")
-        match = matcher.match_player(test_player)
-
-        if match:
-            print(f"  ✅ Matched: {match.name} (ID: {match.id}, RazzID: {match.razzball_id})")
-        else:
-            print(f"  ❌ No match found")
-
-    db.close()

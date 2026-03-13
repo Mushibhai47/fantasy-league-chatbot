@@ -85,16 +85,27 @@ class CSVParser:
         players = []
 
         for _, row in df.iterrows():
-            # Avail column contains team owner name OR is empty for free agents
+            # Skip footer/summary rows (Player column is NaN or empty)
+            player_raw = row.get('Player', None)
+            if pd.isna(player_raw) or str(player_raw).strip() in ('', 'nan'):
+                continue
+
+            # Avail column: team owner name, empty/NaN for free agents,
+            # or CBS waiver designation "W ( 3/23)" for players on the waiver wire
             avail_val = row['Avail']
             if pd.notna(avail_val) and isinstance(avail_val, str) and avail_val.strip() != '':
-                owner = avail_val.strip()
+                cleaned_avail = avail_val.strip()
+                # CBS waiver wire format: "W ( 3/23)" or "W (3/23)" — treat as free agent
+                if re.match(r'^W\s*\(', cleaned_avail, re.IGNORECASE):
+                    owner = 'Free Agent'
+                else:
+                    owner = cleaned_avail
             else:
                 owner = 'Free Agent'
 
             # Player column format: "Name Position | Team"
             # Example: "Shohei Ohtani P,U | LAD "
-            player_str = str(row['Player'])
+            player_str = str(player_raw)
 
             # Extract name, position, and team
             position = None
