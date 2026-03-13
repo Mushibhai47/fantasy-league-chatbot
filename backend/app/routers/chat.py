@@ -271,7 +271,7 @@ async def chat(
                         if proj_name:
                             name_lookup[proj_name] = dollar_str
 
-                logger.info(f"💰 Lookups ready ({requested_type}): {len(nfbc_lookup)} NFBC, {len(fantrax_lookup)} Fantrax, {len(name_lookup)} by name")
+                logger.info(f"💰 Lookups ready ({requested_type}): {len(nfbc_lookup)} NFBC, {len(fantrax_lookup)} Fantrax, {len(cbs_name_lookup)} CBS, {len(name_lookup)} by name")
             except Exception as e:
                 logger.warning(f"⚠️ Could not build dollar lookup: {e}")
 
@@ -296,6 +296,8 @@ async def chat(
                     val = cbs_name_lookup.get(cbs_key, '')
                     if val:
                         return f" [{val}]"
+                    else:
+                        logger.debug(f"CBS miss: key='{cbs_key}' not in cbs_name_lookup ({len(cbs_name_lookup)} entries)")
 
             # Fallback to name matching
             name_lower = player_name.lower().strip()
