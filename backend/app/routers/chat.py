@@ -9,6 +9,7 @@ from app.services.message_limit_service import MessageLimitService
 from app.schemas.chat import ChatRequest, ChatResponse
 import pandas as pd
 import logging
+import re as _re
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -18,6 +19,38 @@ _projections_df = None
 _weekly_projections_df = None
 _daily_projections_df = None
 _daily_cache_date = None  # EST date when daily cache was last populated
+
+# CBS team code differences between CBS Sports CSV exports and the Razzball projection API
+_CBS_TEAM_MAP = {'CHW': 'CWS', 'WAS': 'WSN'}
+
+
+def _normalize_cbs_name(cbs_str: str) -> str:
+    """Normalize a CBS Sports player name for flexible matching.
+
+    Handles team code differences (CHW→CWS), Jr./Sr. suffixes, and
+    multi-position formats (2B,3B vs 2B) so that names from the CBS CSV
+    and from the Razzball projection API can be compared reliably.
+
+    Examples:
+        'Jazz Chisholm 2B,3B | NYY'  →  'jazz chisholm|NYY'
+        'Jazz Chisholm Jr. 2B | NYY' →  'jazz chisholm|NYY'
+        'Cameron Schlittler P | CHW' →  'cameron schlittler|CWS'
+    """
+    if not cbs_str:
+        return ''
+    parts = str(cbs_str).split('|')
+    team = parts[1].strip().upper() if len(parts) > 1 else ''
+    team = _CBS_TEAM_MAP.get(team, team)
+    # Remove trailing position token(s) — e.g. "OF", "2B,3B", "SP", "P", "1B/DH"
+    name_tokens = parts[0].strip().split()
+    while name_tokens and _re.match(r'^[A-Z0-9,/]+$', name_tokens[-1]):
+        name_tokens.pop()
+    name = ' '.join(name_tokens)
+    # Lowercase, strip Jr./Sr./II/III, strip periods
+    name = name.lower()
+    name = _re.sub(r'\b(jr\.?|sr\.?|ii+|iii+)\b', '', name)
+    name = name.replace('.', '').replace('  ', ' ').strip()
+    return f"{name}|{team}"
 
 
 @router.post("/", response_model=ChatResponse)
@@ -267,7 +300,9 @@ async def chat(
             if id_col == 'FantraxID':
                 return str(player_obj.fantrax_id) if player_obj.fantrax_id else ''
             elif id_col == 'CBSSportsName':
-                return str(player_obj.cbs_player_name) if player_obj.cbs_player_name else ''
+                # Normalize so CHW→CWS, Jr. stripped, position removed — matches API format
+                raw = str(player_obj.cbs_player_name) if player_obj.cbs_player_name else ''
+                return _normalize_cbs_name(raw) if raw else ''
             else:  # NFBCID (default)
                 return str(player_obj.nfbc_id) if player_obj.nfbc_id else ''
 
@@ -297,14 +332,18 @@ async def chat(
         def build_projection_lookup(df):
             """Build {id_val: row} lookup. Returns (lookup, id_col_used) so callers
             can build roster ID sets with the SAME column — preventing false matches
-            (e.g. FantraxID accidentally colliding with a different NFBCID)."""
+            (e.g. FantraxID accidentally colliding with a different NFBCID).
+            For CBS leagues the key is the normalized CBS name so CHW/CWS and Jr.
+            differences don't break the match."""
             id_col = resolve_id_col(df)
             lookup = {}
             if id_col in df.columns:
                 for _, row in df.iterrows():
                     id_val = str(row.get(id_col, ''))
                     if id_val and id_val not in ('nan', 'None', ''):
-                        lookup[id_val] = row
+                        key = _normalize_cbs_name(id_val) if id_col == 'CBSSportsName' else id_val
+                        if key:
+                            lookup[key] = row
             return lookup, id_col
 
         def get_team_player_ids(team_name, id_col: str = None):
@@ -997,6 +1036,9 @@ async def chat(
             if id_col in pickup_df.columns:
                 for _, row in pickup_df.iterrows():
                     pid = str(row.get(id_col, ''))
+                    # For CBS, normalize the API's CBSSportsName to match our owned_ids keys
+                    if id_col == 'CBSSportsName' and pid:
+                        pid = _normalize_cbs_name(pid)
                     if pid and pid not in ('nan', 'None', '') and pid not in owned_ids:
                         dollar_val = row.get('$', 0)
                         try:
