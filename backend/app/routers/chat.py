@@ -334,18 +334,14 @@ async def chat(
                     val = cbs_name_lookup.get(cbs_key, '')
                     if val:
                         return f" [{val}]"
-                    else:
-                        logger.debug(f"CBS miss: key='{cbs_key}' not in cbs_name_lookup ({len(cbs_name_lookup)} entries)")
+                    # CBS player with no exact CBS key match — stop here, no name guessing
+                    logger.debug(f"CBS miss: key='{cbs_key}' not in cbs_name_lookup ({len(cbs_name_lookup)} entries)")
+                    return ""
 
-            # Fallback to name matching
+            # Fallback to exact name matching only (no partial/fuzzy — avoids wrong-player matches)
             name_lower = player_name.lower().strip()
             if name_lower in name_lookup:
                 return f" [{name_lookup[name_lower]}]"
-
-            # Partial name match
-            for proj_name, dollar in name_lookup.items():
-                if name_lower in proj_name or proj_name in name_lower:
-                    return f" [{dollar}]"
             return ""
 
         # ============================================================
