@@ -248,6 +248,12 @@ async def chat(
                             proj_pos_lookup[str(nfbc_id)] = row_pos
                         if fantrax_id and str(fantrax_id) not in ('nan', 'None', ''):
                             proj_pos_lookup[str(fantrax_id)] = row_pos
+                        # Also store by CBS name key for CBS leagues
+                        cbs_sn_pos = str(row.get('CBSSportsName', ''))
+                        if cbs_sn_pos and cbs_sn_pos not in ('nan', 'None', ''):
+                            cbs_pos_key = _normalize_cbs_name(cbs_sn_pos)
+                            if cbs_pos_key:
+                                proj_pos_lookup[cbs_pos_key] = row_pos
 
                     if dollar_str:
                         # Store by NFBCID (most reliable for NFBC CSVs)
@@ -270,6 +276,38 @@ async def chat(
                         proj_name = re.sub(r'\[player id=\d+\]|\[/player\]', '', proj_name).strip()
                         if proj_name:
                             name_lookup[proj_name] = dollar_str
+
+                # Second pass: fill CBS entries that LeagueType filtering may have excluded
+                # (e.g. a player only in MLB12 data when requested_type filtered to AL12/NL12)
+                if filtered_df is not _projections_df and 'CBSSportsName' in _projections_df.columns:
+                    for _, row2 in _projections_df.iterrows():
+                        cbs_sn2 = str(row2.get('CBSSportsName', ''))
+                        if not cbs_sn2 or cbs_sn2 in ('nan', 'None', ''):
+                            continue
+                        cbs_key2 = _normalize_cbs_name(cbs_sn2)
+                        if not cbs_key2 or cbs_key2 in cbs_name_lookup:
+                            continue  # Already captured from filtered data — don't override
+                        pos2 = str(row2.get('Pos', '')).upper()
+                        is_p2 = pos2 in ('SP', 'RP', 'P')
+                        dp2 = []
+                        overall2 = row2.get('$', row2.get('dollar_value', ''))
+                        if overall2 and str(overall2) not in ('nan', 'None', ''):
+                            dp2.append(f"${overall2}")
+                        pts2 = row2.get('PTS', '')
+                        if pts2 and str(pts2) not in ('nan', 'None', ''):
+                            dp2.append(f"PTS:{pts2}")
+                        pg2 = row2.get('$/G$', '')
+                        if pg2 and str(pg2) not in ('nan', 'None', ''):
+                            dp2.append(f"$/G:{pg2}")
+                        for cat2 in (['$W$', '$SV$', '$K$', '$ERA$', '$WHIP$', '$QS$', '$HLD$'] if is_p2 else ['$R$', '$HR$', '$RBI$', '$SB$', '$AVG$', '$OBP$']):
+                            v2 = row2.get(cat2, '')
+                            if v2 and str(v2) not in ('nan', 'None', ''):
+                                dp2.append(f"${cat2.replace('$', '')}:{v2}")
+                        ds2 = ' '.join(dp2) if dp2 else ''
+                        if ds2:
+                            cbs_name_lookup[cbs_key2] = ds2
+                        if cbs_key2 not in proj_pos_lookup and pos2 and pos2 not in ('nan', 'None', ''):
+                            proj_pos_lookup[cbs_key2] = pos2
 
                 logger.info(f"💰 Lookups ready ({requested_type}): {len(nfbc_lookup)} NFBC, {len(fantrax_lookup)} Fantrax, {len(cbs_name_lookup)} CBS, {len(name_lookup)} by name")
             except Exception as e:
@@ -500,6 +538,12 @@ async def chat(
                 owner = owner[1:]
             dollar_val = get_player_dollar_value(player.name, player)
             pos = (player.position or '').upper()
+            # For CBS players, prefer API position over DB position (DB comes from source CSV which may be wrong)
+            if player.cbs_player_name:
+                _cbs_pk = _normalize_cbs_name(str(player.cbs_player_name))
+                _api_pos = proj_pos_lookup.get(_cbs_pk, '')
+                if _api_pos:
+                    pos = _api_pos.upper()
             is_pitcher = pos in PITCHER_POSITIONS
 
             # Clean player name: strip trailing position codes (e.g. "Noelvi Marte 3B,OF" -> "Noelvi Marte")
@@ -508,9 +552,15 @@ async def chat(
                 '', player.name or ''
             ).strip() or player.name or '?'
 
-            # Resolve best display position: prefer projection data over stored 'P' or None
+            # Resolve best display position: prefer API projection data over DB (source CSV)
             display_pos = player.position or ''
-            if not display_pos or display_pos.upper() == 'P':
+            if player.cbs_player_name:
+                # CBS players: always use API position (DB pos can be wrong/outdated)
+                _cbs_pk2 = _normalize_cbs_name(str(player.cbs_player_name))
+                _api_pos2 = proj_pos_lookup.get(_cbs_pk2, '')
+                if _api_pos2:
+                    display_pos = _api_pos2
+            elif not display_pos or display_pos.upper() == 'P':
                 pid_key = str(player.nfbc_id) if player.nfbc_id else ''
                 if not pid_key and player.fantrax_id:
                     pid_key = str(player.fantrax_id)
