@@ -30,6 +30,17 @@ function razzbot_enqueue_assets() {
         RAZZBOT_VERSION,
         true  // load in footer
     );
+
+    // Pass the logged-in WordPress user's email to the JS so the message
+    // counter is tied to their WP account, not a random per-device ID
+    $user = wp_get_current_user();
+    if ( $user->ID ) {
+        wp_add_inline_script(
+            'razzbot-js',
+            'window.razzbotUserId = ' . wp_json_encode( $user->user_email ) . ';',
+            'before'
+        );
+    }
 }
 
 // ─── Shortcode: [razzball_chatbot] ──────────────────────────────────────────

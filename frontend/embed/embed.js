@@ -188,7 +188,12 @@ function loadSavedData() {
     }
 
     // Generate or load user ID for message limit tracking
-    if (!savedUserId) {
+    // If WordPress user ID is injected by the plugin, use that so the
+    // counter is tied to the WP login rather than a per-device random ID
+    if (window.razzbotUserId) {
+        savedUserId = window.razzbotUserId;
+        localStorage.setItem('razzball_user_id', savedUserId);
+    } else if (!savedUserId) {
         savedUserId = generateUserId();
         localStorage.setItem('razzball_user_id', savedUserId);
     }
