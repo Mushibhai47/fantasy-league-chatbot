@@ -13,9 +13,9 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 define( 'RAZZBOT_VERSION',    '1.0.0' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
-// ─── Enqueue CSS & JS on front end ──────────────────────────────────────────
+// ─── Enqueue CSS & JS only on pages that use the shortcode ──────────────────
+// Loaded from within the shortcode so it never affects other pages
 
-add_action( 'wp_enqueue_scripts', 'razzbot_enqueue_assets' );
 function razzbot_enqueue_assets() {
     wp_enqueue_style(
         'razzbot-css',
@@ -47,6 +47,8 @@ function razzbot_enqueue_assets() {
 
 add_shortcode( 'razzball_chatbot', 'razzball_chatbot_shortcode' );
 function razzball_chatbot_shortcode() {
+    // Only load assets on this page
+    razzbot_enqueue_assets();
     ob_start();
     ?>
     <div id="razzball-chatbot-embed">
