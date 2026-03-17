@@ -66,6 +66,10 @@ function setupEventListeners() {
     document.getElementById('browse-btn').addEventListener('click', () => {
         document.getElementById('file-input').click();
     });
+    document.getElementById('skip-upload-btn')?.addEventListener('click', () => {
+        // Skip CSV upload — user can still ask about any player by name
+        showChatScreen();
+    });
     document.getElementById('file-input').addEventListener('change', handleFileSelect);
     document.getElementById('start-chat-btn').addEventListener('click', () => {
         // Save team and league type selections before entering chat

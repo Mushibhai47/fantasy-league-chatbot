@@ -86,6 +86,8 @@ function razzball_chatbot_shortcode() {
                         <button id="browse-btn" class="btn btn-secondary">Browse Files</button>
                     </div>
                     <div id="upload-status" class="status-message"></div>
+                    <p style="text-align:center; margin-top: 12px; font-size: 13px; color: #888;">or</p>
+                    <button id="skip-upload-btn" class="btn btn-secondary" style="width:100%; margin-top: 4px;">Skip — just ask about players</button>
                 </div>
 
                 <div class="setup-step" id="step-ready" style="display: none;">
