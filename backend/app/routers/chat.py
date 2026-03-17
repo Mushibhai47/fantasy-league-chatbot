@@ -682,11 +682,15 @@ async def chat(
         all_possible_cats = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'W', 'SV', 'ERA', 'WHIP', 'K', 'HLD', 'QS']
         active_cats = []
         try:
-            _top30 = filtered_df.nlargest(30, '$') if '$' in filtered_df.columns else filtered_df.head(30)
+            # Use NYY + NYM (one AL, one NL) as representative sample —
+            # any category scored in this format will be non-zero for those players
+            _sample = filtered_df[filtered_df['Team'].isin(['NYY', 'NYM'])] if 'Team' in filtered_df.columns else filtered_df.head(30)
+            if len(_sample) < 5:  # fallback if neither team has data in this slice
+                _sample = filtered_df.nlargest(30, '$') if '$' in filtered_df.columns else filtered_df.head(30)
             for cat in all_possible_cats:
                 df_col = f'${cat}$'
                 if df_col in filtered_df.columns:
-                    col_vals = _top30[df_col].fillna(0)
+                    col_vals = _sample[df_col].fillna(0)
                     if (col_vals.astype(float) != 0).any():
                         active_cats.append(cat)
                 else:
@@ -694,7 +698,7 @@ async def chat(
                     if any(team_totals[t].get(cat, 0.0) != 0.0 for t in ranked_teams):
                         active_cats.append(cat)
         except Exception as _e:
-            logger.warning(f"active_cats top-30 check failed: {_e}, using team totals")
+            logger.warning(f"active_cats NYY/NYM check failed: {_e}, using team totals")
             for cat in all_possible_cats:
                 if any(team_totals[t].get(cat, 0.0) != 0.0 for t in ranked_teams):
                     active_cats.append(cat)
