@@ -2282,6 +2282,70 @@ async def chat(
                 context_text += "\n"
                 logger.info(f"Named player lookup: added {len(extra_players)} players to context")
 
+        # Time-period detection: if message mentions week/today/tomorrow,
+        # also look up named players in the weekly/daily projection data
+        _time_label = None
+        _time_df = None
+        if 'week' in msg_lower:
+            _time_label = 'WEEKLY'
+            if _weekly_projections_df is None:
+                try:
+                    from app.services.projection_service import ProjectionService
+                    svc = ProjectionService(projection_type="weekly")
+                    _weekly_projections_df = svc.fetch_projections()
+                except Exception as _te:
+                    logger.warning(f"Could not load weekly data for time lookup: {_te}")
+            _time_df = _weekly_projections_df
+        elif 'tomorrow' in msg_lower:
+            _time_label = 'TOMORROW'
+            _time_df = _daily_projections_df
+        elif 'today' in msg_lower:
+            _time_label = 'TODAY'
+            _time_df = _daily_projections_df
+
+        if _time_label and _time_df is not None:
+            try:
+                # Filter to requested league type
+                if 'LeagueType' in _time_df.columns:
+                    _tdf = _time_df[_time_df['LeagueType'] == requested_type]
+                    if len(_tdf) == 0:
+                        _tdf = _time_df
+                else:
+                    _tdf = _time_df
+                _time_players = []
+                _seen_time = set()
+                for _, row in _tdf.iterrows():
+                    raw_name = str(row.get('Name', ''))
+                    clean = re.sub(r'\[player id=\d+\]|\[/player\]', '', raw_name).strip()
+                    if not clean:
+                        continue
+                    clean_lower = clean.lower()
+                    if clean_lower in _seen_time:
+                        continue
+                    words = clean_lower.split()
+                    if len(words) >= 2 and words[-1] in msg_lower and words[0] in msg_lower:
+                        _seen_time.add(clean_lower)
+                        p_pos = str(row.get('Pos', '?')).strip()
+                        p_team = str(row.get('Team', '?')).strip()
+                        row_parts = []
+                        overall = row.get('$', '')
+                        if overall and str(overall) not in ('nan', 'None', ''):
+                            row_parts.append(f"${overall}")
+                        for cat in ['GS', 'QS', 'W', 'SV', 'K', 'ERA', 'WHIP', 'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP']:
+                            v = row.get(cat, '')
+                            if v and str(v) not in ('nan', 'None', ''):
+                                row_parts.append(f"{cat}:{v}")
+                        if row_parts:
+                            _time_players.append(f"{clean} | Pos: {p_pos} | Team: {p_team} | {' '.join(row_parts)}")
+                if _time_players:
+                    context_text += f"\n{_time_label} PLAYER DATA (use this for time-specific questions):\n"
+                    for tp in _time_players:
+                        context_text += f"  PLAYER: {tp}\n"
+                    context_text += "\n"
+                    logger.info(f"{_time_label} player lookup: added {len(_time_players)} players")
+            except Exception as _te:
+                logger.warning(f"Time-scoped player lookup failed: {_te}")
+
         context_chars = len(context_text)
         est_tokens = context_chars // 4
         logger.info(f"Context built: {len(all_team_names)} teams, {len(free_agents)} free agents, ~{est_tokens} tokens ({context_chars} chars)")
