@@ -673,6 +673,32 @@ async def chat(
         for rank, team_name in enumerate(ranked_teams, 1):
             team_totals[team_name]['rank'] = rank
 
+        # ============================================================
+        # HARD-CODED REPORT GENERATORS (bypass GPT for accuracy)
+        # ============================================================
+
+        # Determine active categories by checking top 30 players in projection data.
+        # If a category is all-zero for the top 30, it's not scored in this format.
+        all_possible_cats = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'W', 'SV', 'ERA', 'WHIP', 'K', 'HLD', 'QS']
+        active_cats = []
+        try:
+            _top30 = filtered_df.nlargest(30, '$') if '$' in filtered_df.columns else filtered_df.head(30)
+            for cat in all_possible_cats:
+                df_col = f'${cat}$'
+                if df_col in filtered_df.columns:
+                    col_vals = _top30[df_col].fillna(0)
+                    if (col_vals.astype(float) != 0).any():
+                        active_cats.append(cat)
+                else:
+                    # Column not in projection data — fall back to team totals
+                    if any(team_totals[t].get(cat, 0.0) != 0.0 for t in ranked_teams):
+                        active_cats.append(cat)
+        except Exception as _e:
+            logger.warning(f"active_cats top-30 check failed: {_e}, using team totals")
+            for cat in all_possible_cats:
+                if any(team_totals[t].get(cat, 0.0) != 0.0 for t in ranked_teams):
+                    active_cats.append(cat)
+
         # Build clear context text for AI with hitter/pitcher separation
         format_names = {"MLB12": "12-team mixed", "MLB15": "15-team mixed", "MLB10": "10-team mixed", "AL12": "12-team AL-only", "NL12": "12-team NL-only"}
         all_formats_str = ", ".join(AVAILABLE_LEAGUE_TYPES)
@@ -680,8 +706,8 @@ async def chat(
         context_text += f"ACTIVE PROJECTION FORMAT: {requested_type} ({format_names.get(requested_type, 'mixed')}).\n"
         context_text += f"AVAILABLE FORMATS: {all_formats_str}. User can request any format.\n"
         # Dynamic column instruction so GPT uses the right batting stat for this format
-        _h_avg_col = '$OBP' if 'OBP' in requested_type else '$AVG'
-        _p_extra_col = ' | $HLD' if 'HLD' in requested_type else (' | $QS' if 'QS' in requested_type else '')
+        _h_avg_col = '$OBP' if 'OBP' in active_cats else '$AVG'
+        _p_extra_col = ' | $HLD' if 'HLD' in active_cats else (' | $QS' if 'QS' in active_cats else '')
         context_text += f"TABLE COLUMNS FOR THIS FORMAT - HITTERS: Player | Pos | Team | $ | $R | $HR | $RBI | $SB | {_h_avg_col} — PITCHERS: Player | Pos | Team | $ | $W | $SV | $K | $ERA | $WHIP{_p_extra_col}\n"
         context_text += f"TEAMS IN LEAGUE: {', '.join(all_team_names)}\n\n"
 
@@ -696,24 +722,6 @@ async def chat(
                 f"${t['W']} | ${t['SV']} | ${t['ERA']} | ${t['WHIP']} | ${t['K']} | ${t['HLD']} | {t['rank']}\n"
             )
         context_text += "\n"
-
-        # ============================================================
-        # HARD-CODED REPORT GENERATORS (bypass GPT for accuracy)
-        # ============================================================
-
-        # Determine which category columns have non-zero data (hide all-zero columns)
-        all_possible_cats = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'W', 'SV', 'ERA', 'WHIP', 'K', 'HLD', 'QS']
-        active_cats = []
-        for cat in all_possible_cats:
-            has_nonzero = any(team_totals[t].get(cat, 0.0) != 0.0 for t in ranked_teams)
-            if has_nonzero:
-                active_cats.append(cat)
-        # For OBP formats, show $OBP instead of $AVG; for standard formats, show $AVG instead of $OBP
-        _is_obp_format = 'OBP' in requested_type
-        if _is_obp_format:
-            active_cats = [c for c in active_cats if c != 'AVG']
-        else:
-            active_cats = [c for c in active_cats if c != 'OBP']
 
         def generate_league_overview_dollars() -> str:
             """Generate League Overview $ table - matches Rudy's SQL LEAGUEREVIEW"""
@@ -2146,10 +2154,10 @@ async def chat(
                 context_text += f"===== TEAM '{team_name}' AUTHORITATIVE TOTALS (from PRE-CALCULATED rankings) =====\n"
                 context_text += f"  TOTAL $: ${t['total']} | RANK: {t['rank']} out of {len(ranked_teams)}\n"
                 context_text += f"  HITTING $: ${t['hitting']} | PITCHING $: ${t['pitching']}\n"
-                _avg_obp_label = '$OBP' if 'OBP' in requested_type else '$AVG'
-                _avg_obp_val = t['OBP'] if 'OBP' in requested_type else t['AVG']
+                _avg_obp_label = '$OBP' if 'OBP' in active_cats else '$AVG'
+                _avg_obp_val = t['OBP'] if 'OBP' in active_cats else t['AVG']
                 context_text += f"  $R: ${t['R']} | $HR: ${t['HR']} | $RBI: ${t['RBI']} | $SB: ${t['SB']} | {_avg_obp_label}: ${_avg_obp_val}\n"
-                _p_extra = f" | $HLD: ${t['HLD']}" if 'HLD' in requested_type else (f" | $QS: ${t.get('QS', 0.0)}" if 'QS' in requested_type else "")
+                _p_extra = f" | $HLD: ${t['HLD']}" if 'HLD' in active_cats else (f" | $QS: ${t.get('QS', 0.0)}" if 'QS' in active_cats else "")
                 context_text += f"  $W: ${t['W']} | $SV: ${t['SV']} | $K: ${t['K']} | $ERA: ${t['ERA']} | $WHIP: ${t['WHIP']}{_p_extra}\n"
                 context_text += f"  USE THESE NUMBERS. DO NOT RECALCULATE.\n"
                 context_text += f"===== ROSTER ({total} players) =====\n"
