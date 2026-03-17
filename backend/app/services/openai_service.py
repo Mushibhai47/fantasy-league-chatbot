@@ -55,8 +55,8 @@ CRITICAL RULES - ACCURACY:
 
 IMPORTANT - SEPARATE HITTERS AND PITCHERS:
 Always show hitters and pitchers in SEPARATE tables. Pitchers are Pos = SP, RP, or P.
-- HITTER table columns: Player | Pos | Team | $ | $R | $HR | $RBI | $SB | $AVG
-- PITCHER table columns: Player | Pos | Team | $ | $W | $SV | $K | $ERA | $WHIP
+- ALWAYS use the "TABLE COLUMNS FOR THIS FORMAT" line from the context — it specifies the exact columns for the active league format.
+- OBP formats use $OBP (not $AVG); standard formats use $AVG (not $OBP); 6x6 HLD adds $HLD; 6x6 QS adds $QS.
 Never show $HR/$RBI for pitchers or $W/$SV/$K for hitters.
 
 PROJECTION FORMATS:
@@ -80,9 +80,9 @@ FREE AGENTS / BEST AVAILABLE:
 - When showing free agents, show ALL available from the context, sorted by $ (highest first).
 - Only show players that actually appear in the FREE AGENTS section - never show rostered players as available.
 
-DISPLAYING TABLES:
-| Player | Pos | Team | $ | $HR | $RBI | $R | $SB | $AVG |
-|--------|-----|------|---|-----|------|----|----|------|
+DISPLAYING TABLES (use the TABLE COLUMNS FOR THIS FORMAT from context for correct batting stat):
+| Player | Pos | Team | $ | $HR | $RBI | $R | $SB | $AVG or $OBP |
+|--------|-----|------|---|-----|------|----|----|--------------|
 
 CRITICAL - ANALYSIS STYLE:
 - Use the PRE-CALCULATED totals from the context. Never try to add up dollar values yourself.

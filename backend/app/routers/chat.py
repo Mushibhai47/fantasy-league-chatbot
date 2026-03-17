@@ -487,7 +487,7 @@ async def chat(
         teams_no_projection = {}  # owner -> list of player names with no projection
         # Per-team category tracking: owner -> {category -> list of values}
         HITTER_CATS = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP']
-        PITCHER_CATS = ['W', 'SV', 'K', 'ERA', 'WHIP', 'HLD']
+        PITCHER_CATS = ['W', 'SV', 'K', 'ERA', 'WHIP', 'HLD', 'QS']
         ALL_CATS = HITTER_CATS + PITCHER_CATS
         teams_cat_dollars = {}  # owner -> {'$': [], 'R': [], 'HR': [], ...}
         free_agents = []
@@ -679,6 +679,10 @@ async def chat(
         context_text = f"FANTASY LEAGUE DATA ({league.league_type}):\n"
         context_text += f"ACTIVE PROJECTION FORMAT: {requested_type} ({format_names.get(requested_type, 'mixed')}).\n"
         context_text += f"AVAILABLE FORMATS: {all_formats_str}. User can request any format.\n"
+        # Dynamic column instruction so GPT uses the right batting stat for this format
+        _h_avg_col = '$OBP' if 'OBP' in requested_type else '$AVG'
+        _p_extra_col = ' | $HLD' if 'HLD' in requested_type else (' | $QS' if 'QS' in requested_type else '')
+        context_text += f"TABLE COLUMNS FOR THIS FORMAT - HITTERS: Player | Pos | Team | $ | $R | $HR | $RBI | $SB | {_h_avg_col} — PITCHERS: Player | Pos | Team | $ | $W | $SV | $K | $ERA | $WHIP{_p_extra_col}\n"
         context_text += f"TEAMS IN LEAGUE: {', '.join(all_team_names)}\n\n"
 
         # Pre-calculated team rankings table with category breakdowns
@@ -698,12 +702,18 @@ async def chat(
         # ============================================================
 
         # Determine which category columns have non-zero data (hide all-zero columns)
-        all_possible_cats = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'W', 'SV', 'ERA', 'WHIP', 'K', 'HLD']
+        all_possible_cats = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'W', 'SV', 'ERA', 'WHIP', 'K', 'HLD', 'QS']
         active_cats = []
         for cat in all_possible_cats:
-            has_nonzero = any(team_totals[t][cat] != 0.0 for t in ranked_teams)
+            has_nonzero = any(team_totals[t].get(cat, 0.0) != 0.0 for t in ranked_teams)
             if has_nonzero:
                 active_cats.append(cat)
+        # For OBP formats, show $OBP instead of $AVG; for standard formats, show $AVG instead of $OBP
+        _is_obp_format = 'OBP' in requested_type
+        if _is_obp_format:
+            active_cats = [c for c in active_cats if c != 'AVG']
+        else:
+            active_cats = [c for c in active_cats if c != 'OBP']
 
         def generate_league_overview_dollars() -> str:
             """Generate League Overview $ table - matches Rudy's SQL LEAGUEREVIEW"""
@@ -2136,8 +2146,11 @@ async def chat(
                 context_text += f"===== TEAM '{team_name}' AUTHORITATIVE TOTALS (from PRE-CALCULATED rankings) =====\n"
                 context_text += f"  TOTAL $: ${t['total']} | RANK: {t['rank']} out of {len(ranked_teams)}\n"
                 context_text += f"  HITTING $: ${t['hitting']} | PITCHING $: ${t['pitching']}\n"
-                context_text += f"  $R: ${t['R']} | $HR: ${t['HR']} | $RBI: ${t['RBI']} | $SB: ${t['SB']} | $AVG: ${t['AVG']} | $OBP: ${t['OBP']}\n"
-                context_text += f"  $W: ${t['W']} | $SV: ${t['SV']} | $K: ${t['K']} | $ERA: ${t['ERA']} | $WHIP: ${t['WHIP']} | $HLD: ${t['HLD']}\n"
+                _avg_obp_label = '$OBP' if 'OBP' in requested_type else '$AVG'
+                _avg_obp_val = t['OBP'] if 'OBP' in requested_type else t['AVG']
+                context_text += f"  $R: ${t['R']} | $HR: ${t['HR']} | $RBI: ${t['RBI']} | $SB: ${t['SB']} | {_avg_obp_label}: ${_avg_obp_val}\n"
+                _p_extra = f" | $HLD: ${t['HLD']}" if 'HLD' in requested_type else (f" | $QS: ${t.get('QS', 0.0)}" if 'QS' in requested_type else "")
+                context_text += f"  $W: ${t['W']} | $SV: ${t['SV']} | $K: ${t['K']} | $ERA: ${t['ERA']} | $WHIP: ${t['WHIP']}{_p_extra}\n"
                 context_text += f"  USE THESE NUMBERS. DO NOT RECALCULATE.\n"
                 context_text += f"===== ROSTER ({total} players) =====\n"
 
