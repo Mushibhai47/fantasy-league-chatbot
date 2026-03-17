@@ -2201,6 +2201,62 @@ async def chat(
         else:
             context_text += "NOTE: No free agents in this data (CSV only contains owned players)\n"
 
+        # Named player lookup: if the user mentions players not in any roster,
+        # search the full projection data so GPT doesn't have to hallucinate
+        if _projections_df is not None:
+            msg_lower = request.message.lower()
+            # Build a lookup of all names already in context (roster + FA) to avoid dupes
+            names_in_context = set()
+            for _, p_str in free_agents:
+                first_part = p_str.split('|')[0].strip().lower()
+                names_in_context.add(first_part)
+            for owner_players in list(teams_hitters.values()) + list(teams_pitchers.values()):
+                for p_str in owner_players:
+                    first_part = p_str.split('|')[0].strip().lower()
+                    names_in_context.add(first_part)
+
+            extra_players = []
+            seen_keys = set()
+            for _, row in filtered_df.iterrows():
+                raw_name = str(row.get('Name', ''))
+                clean = re.sub(r'\[player id=\d+\]|\[/player\]', '', raw_name).strip()
+                if not clean:
+                    continue
+                clean_lower = clean.lower()
+                if clean_lower in names_in_context or clean_lower in seen_keys:
+                    continue
+                # Check if any word combo from this name appears in the message
+                words = clean_lower.split()
+                if len(words) >= 2:
+                    # Need at least first + last name match to avoid false positives
+                    if words[-1] in msg_lower and words[0] in msg_lower:
+                        seen_keys.add(clean_lower)
+                        val = get_player_dollar_value(clean, None)
+                        # Build projection string from row
+                        p_pos = str(row.get('Pos', '?')).strip()
+                        p_team = str(row.get('Team', '?')).strip()
+                        if val:
+                            extra_players.append(f"{clean} | Pos: {p_pos} | Team: {p_team} | {val.strip().strip('[]')}")
+                        else:
+                            # Build from row directly
+                            row_parts = []
+                            overall = row.get('$', '')
+                            if overall and str(overall) not in ('nan', 'None', ''):
+                                row_parts.append(f"${overall}")
+                            for cat in ['PTS', '$R$', '$HR$', '$RBI$', '$SB$', '$AVG$', '$W$', '$SV$', '$K$', '$ERA$', '$WHIP$']:
+                                v = row.get(cat, '')
+                                if v and str(v) not in ('nan', 'None', ''):
+                                    row_parts.append(f"{cat.replace('$','')}:{v}")
+                            if row_parts:
+                                extra_players.append(f"{clean} | Pos: {p_pos} | Team: {p_team} | {' '.join(row_parts)}")
+
+            if extra_players:
+                context_text += f"\nPLAYER LOOKUP (from projection data, not on any roster):\n"
+                for ep in extra_players:
+                    context_text += f"  PLAYER: {ep}\n"
+                context_text += "\n"
+                logger.info(f"Named player lookup: added {len(extra_players)} players to context")
+
         context_chars = len(context_text)
         est_tokens = context_chars // 4
         logger.info(f"Context built: {len(all_team_names)} teams, {len(free_agents)} free agents, ~{est_tokens} tokens ({context_chars} chars)")
