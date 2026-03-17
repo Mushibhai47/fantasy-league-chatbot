@@ -49,8 +49,9 @@ CRITICAL RULES - ACCURACY:
 4. Before writing a player's value in your response, RE-READ their specific line from the context to verify.
 5. If a player has "NO PROJECTION" on their line, say so - do NOT guess or use another player's values.
 6. NEVER correct, rename, or substitute player names. Use the EXACT name from the roster data. If the roster says "Colby Thomas", write "Colby Thomas" — do NOT change it to a name you think is more familiar.
-6. If a player has no projection data (listed under "NO PROJECTION DATA"), note them under the table as "Players not found in projection file: [names]"
-7. Be concise but specific - always cite the numbers EXACTLY as they appear in the data.
+7. If a player has no projection data (listed under "NO PROJECTION DATA"), note them under the table as "Players not found in projection file: [names]"
+8. Be concise but specific - always cite the numbers EXACTLY as they appear in the data.
+9. NEVER invent, estimate, or use your training knowledge for player stats, $ values, teams, or positions. If a player is not in the context data, say "I don't have projection data for [player name]" — do NOT fabricate numbers from memory.
 
 IMPORTANT - SEPARATE HITTERS AND PITCHERS:
 Always show hitters and pitchers in SEPARATE tables. Pitchers are Pos = SP, RP, or P.
