@@ -13,10 +13,16 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 define( 'RAZZBOT_VERSION',    '1.0.0' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
-// ─── Enqueue CSS & JS only on pages that use the shortcode ──────────────────
-// Loaded from within the shortcode so it never affects other pages
+// ─── Enqueue CSS & JS only on the page that uses the shortcode ──────────────
+// Uses wp_enqueue_scripts + has_shortcode() — the correct WP way to
+// guarantee assets are NEVER loaded on other pages or posts.
 
-function razzbot_enqueue_assets() {
+add_action( 'wp_enqueue_scripts', 'razzbot_conditional_enqueue' );
+function razzbot_conditional_enqueue() {
+    global $post;
+    if ( ! is_a( $post, 'WP_Post' ) || ! has_shortcode( $post->post_content, 'razzball_chatbot' ) ) {
+        return;
+    }
     wp_enqueue_style(
         'razzbot-css',
         RAZZBOT_PLUGIN_URL . 'assets/embed.css',
@@ -47,8 +53,6 @@ function razzbot_enqueue_assets() {
 
 add_shortcode( 'razzball_chatbot', 'razzball_chatbot_shortcode' );
 function razzball_chatbot_shortcode() {
-    // Only load assets on this page
-    razzbot_enqueue_assets();
     ob_start();
     ?>
     <div id="razzball-chatbot-embed">
