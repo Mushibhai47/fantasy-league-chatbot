@@ -84,7 +84,7 @@ async def chat(
                 raise HTTPException(
                     status_code=429,
                     detail={
-                        "error": "Monthly message limit reached",
+                        "error": "Daily message limit reached",
                         "message": message,
                         "messages_remaining": 0,
                         "reset_date": user.limit_reset_date.isoformat()

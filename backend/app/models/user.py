@@ -15,10 +15,10 @@ class User(Base):
     id = Column(GUID, primary_key=True, default=uuid.uuid4)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    # Message limit tracking
+    # Message limit tracking (daily limit — resets every 24 hours)
     messages_used = Column(Integer, default=0, nullable=False)
-    monthly_limit = Column(Integer, default=100, nullable=False)
-    limit_reset_date = Column(DateTime, default=lambda: datetime.utcnow() + timedelta(days=30), nullable=False)
+    monthly_limit = Column(Integer, default=7, nullable=False)  # "monthly_limit" column kept for DB compat; now a daily limit
+    limit_reset_date = Column(DateTime, default=lambda: datetime.utcnow() + timedelta(days=1), nullable=False)
 
     # Relationships
     leagues = relationship("League", back_populates="user", cascade="all, delete-orphan")

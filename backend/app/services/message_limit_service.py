@@ -22,10 +22,10 @@ class MessageLimitService:
         """
         now = datetime.utcnow()
 
-        # Check if we need to reset the counter
+        # Check if we need to reset the counter (resets every 24 hours)
         if now >= user.limit_reset_date:
             user.messages_used = 0
-            user.limit_reset_date = now + timedelta(days=30)
+            user.limit_reset_date = now + timedelta(days=1)
             db.commit()
             db.refresh(user)
 
@@ -49,9 +49,9 @@ class MessageLimitService:
         remaining = user.monthly_limit - user.messages_used
 
         if user.messages_used >= user.monthly_limit:
-            return False, 0, f"Monthly message limit reached. Resets on {user.limit_reset_date.strftime('%Y-%m-%d')}"
+            return False, 0, f"Daily message limit reached. Resets at {user.limit_reset_date.strftime('%Y-%m-%d %H:%M')} UTC"
 
-        return True, remaining, f"{remaining} messages remaining this month"
+        return True, remaining, f"{remaining} messages remaining today"
 
     @staticmethod
     def increment_usage(user: User, db: Session) -> User:
@@ -90,7 +90,7 @@ class MessageLimitService:
             "messages_remaining": remaining,
             "percentage_used": round(percentage_used, 2),
             "reset_date": user.limit_reset_date.isoformat(),
-            "days_until_reset": (user.limit_reset_date - datetime.utcnow()).days
+            "hours_until_reset": max(0, round((user.limit_reset_date - datetime.utcnow()).total_seconds() / 3600, 1))
         }
 
     @staticmethod
@@ -141,8 +141,8 @@ class MessageLimitService:
             user = User(
                 id=user_uuid,
                 messages_used=0,
-                monthly_limit=100,
-                limit_reset_date=datetime.utcnow() + timedelta(days=30)
+                monthly_limit=7,
+                limit_reset_date=datetime.utcnow() + timedelta(days=1)
             )
             db.add(user)
             db.commit()

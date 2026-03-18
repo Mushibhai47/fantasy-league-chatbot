@@ -74,7 +74,7 @@ function razzball_chatbot_shortcode() {
                     <div class="input-group">
                         <input type="password" id="api-key-input" placeholder="sk-...your-api-key" autocomplete="off" />
                         <button id="save-api-key-btn" class="btn btn-primary">Save API Key</button>
-                        <button id="skip-api-key-btn" class="btn btn-secondary">Use Free Tier (100/month)</button>
+                        <button id="skip-api-key-btn" class="btn btn-secondary">Use Free Tier (7/day)</button>
                     </div>
                     <div id="api-key-status" class="status-message"></div>
                 </div>
@@ -186,7 +186,7 @@ function razzball_chatbot_shortcode() {
                     <div class="setting-item">
                         <label>OpenAI API Key (Optional)</label>
                         <div class="input-group">
-                            <input type="password" id="settings-api-key" placeholder="No API key - using free tier (100 messages/month)" readonly />
+                            <input type="password" id="settings-api-key" placeholder="No API key - using free tier (7 messages/day)" readonly />
                             <button id="edit-api-key-btn" class="btn btn-secondary">Add/Edit</button>
                         </div>
                         <p class="setting-description">

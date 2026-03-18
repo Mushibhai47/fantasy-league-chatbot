@@ -18,7 +18,7 @@ const state = {
     selectedLeagueType: 'MLB12',  // Projection league type (MLB12, MLB15, etc.)
     conversationHistory: [],
     messagesRemaining: null,
-    monthlyLimit: 100
+    dailyLimit: 7
 };
 
 // Initialize app
@@ -258,7 +258,7 @@ function showChatScreen() {
     if (state.apiKey) {
         updateMessageCounter(null); // Unlimited
     } else {
-        updateMessageCounter(state.messagesRemaining || state.monthlyLimit); // Show default or saved value
+        updateMessageCounter(state.messagesRemaining || state.dailyLimit); // Show default or saved value
     }
 }
 
@@ -460,8 +460,8 @@ async function handleSendMessage() {
             const errorData = await response.json();
             const detail = errorData.detail;
             addMessageToChat(
-                `⚠️ ${detail.message || 'Monthly message limit reached'}\n\n` +
-                `Your limit will reset on ${new Date(detail.reset_date).toLocaleDateString()}.\n\n` +
+                `⚠️ ${detail.message || 'Daily message limit reached'}\n\n` +
+                `Your limit will reset at ${new Date(detail.reset_date).toLocaleString()}.\n\n` +
                 `Want unlimited messages? Add your own OpenAI API key in Settings (⚙️).`,
                 'bot'
             );
@@ -628,7 +628,7 @@ function openSettingsModal() {
         apiKeyInput.readOnly = true;
     } else {
         apiKeyInput.value = '';
-        apiKeyInput.placeholder = 'No API key - using free tier (100 messages/month)';
+        apiKeyInput.placeholder = 'No API key - using free tier (7 messages/day)';
     }
 
     // Display usage information
@@ -636,15 +636,15 @@ function openSettingsModal() {
     if (state.apiKey) {
         usageInfo.innerHTML = '<div style="font-size: 14px; color: #27ae60; font-weight: 600;">✨ Unlimited messages (using your API key)</div>';
     } else {
-        const remaining = state.messagesRemaining !== null ? state.messagesRemaining : state.monthlyLimit;
-        const used = state.monthlyLimit - remaining;
-        const percentage = (used / state.monthlyLimit * 100).toFixed(0);
-        const color = remaining <= 10 ? '#e74c3c' : (remaining <= 30 ? '#f39c12' : '#27ae60');
+        const remaining = state.messagesRemaining !== null ? state.messagesRemaining : state.dailyLimit;
+        const used = state.dailyLimit - remaining;
+        const percentage = (used / state.dailyLimit * 100).toFixed(0);
+        const color = remaining <= 1 ? '#e74c3c' : (remaining <= 3 ? '#f39c12' : '#27ae60');
 
         usageInfo.innerHTML = `
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span style="color: #666;">Used this month:</span>
-                <strong>${used} / ${state.monthlyLimit}</strong>
+                <span style="color: #666;">Used today:</span>
+                <strong>${used} / ${state.dailyLimit}</strong>
             </div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                 <span style="color: #666;">Remaining:</span>
@@ -721,7 +721,7 @@ function updateMessageCounter(remaining) {
         } else {
             // Using backend key - show remaining
             const color = remaining <= 10 ? '#e74c3c' : (remaining <= 30 ? '#f39c12' : '#27ae60');
-            counterEl.innerHTML = `<span style="color: ${color};">${remaining} messages remaining this month</span>`;
+            counterEl.innerHTML = `<span style="color: ${color};">${remaining} messages remaining today</span>`;
         }
         counterEl.style.display = 'block';
     }
