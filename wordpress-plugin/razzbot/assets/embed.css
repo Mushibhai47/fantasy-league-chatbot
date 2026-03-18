@@ -580,6 +580,7 @@
 .message {
     margin-bottom: var(--spacing-lg);
     display: flex;
+    padding: 0 var(--spacing-sm);
     animation: messageSlide 0.4s var(--transition-bounce);
 }
 
@@ -598,10 +599,11 @@
     max-width: 80%;
     padding: var(--spacing-md) var(--spacing-lg);
     border-radius: var(--radius-lg);
-    line-height: 1.7;
+    line-height: 1.8;
     position: relative;
     transition: transform var(--transition-fast);
     overflow-x: auto;
+    word-break: break-word;
 }
 
 .bot-message .message-content {
@@ -619,21 +621,7 @@
     border-bottom-left-radius: 4px;
 }
 
-.bot-message .message-content::before {
-    content: '🤖';
-    position: absolute;
-    top: -12px;
-    left: -12px;
-    width: 32px;
-    height: 32px;
-    background: var(--gradient-primary);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    box-shadow: var(--shadow-md);
-}
+/* Avatar icon removed — was overlapping first letters of bot messages */
 
 .user-message {
     justify-content: flex-end;

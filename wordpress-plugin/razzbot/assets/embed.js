@@ -471,6 +471,22 @@ async function handleSendMessage() {
             return;
         }
 
+        if (response.status === 404) {
+            // League data was lost (server restart wiped the DB) — clear stale ID and prompt re-upload
+            state.leagueId = null;
+            state.selectedTeam = null;
+            localStorage.removeItem('razzball_league_id');
+            localStorage.removeItem('razzball_selected_team');
+            setLoadingState(false);
+            showSetupScreen('upload');
+            showStatus(
+                document.getElementById('upload-status'),
+                'ℹ️ Your league data was cleared by a server update. Please re-upload your CSV.',
+                'info'
+            );
+            return;
+        }
+
         if (!response.ok) {
             throw new Error('Chat request failed');
         }
