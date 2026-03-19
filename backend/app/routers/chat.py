@@ -2290,7 +2290,6 @@ async def chat(
             _time_label = 'WEEKLY'
             if _weekly_projections_df is None:
                 try:
-                    from app.services.projection_service import ProjectionService
                     svc = ProjectionService(projection_type="weekly")
                     _weekly_projections_df = svc.fetch_projections()
                 except Exception as _te:
