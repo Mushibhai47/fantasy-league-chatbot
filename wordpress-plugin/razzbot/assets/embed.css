@@ -649,20 +649,23 @@
 }
 
 .message-content table {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     border-collapse: separate;
     border-spacing: 0;
     margin: var(--spacing-md) 0;
     border-radius: var(--radius-md);
     overflow: hidden;
     box-shadow: var(--shadow-sm);
+    font-size: 12px;
 }
 
 .message-content th,
 .message-content td {
-    padding: 10px 12px;
+    padding: 8px 14px;
     text-align: left;
     border-bottom: 1px solid var(--border);
+    white-space: nowrap;
 }
 
 .message-content th {
@@ -670,7 +673,7 @@
     color: white;
     font-weight: 700;
     text-transform: uppercase;
-    font-size: 12px;
+    font-size: 11px;
     letter-spacing: 0.5px;
 }
 
