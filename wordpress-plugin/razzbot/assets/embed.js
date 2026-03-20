@@ -574,8 +574,12 @@ function convertMarkdownTable(text) {
                 inTable = true;
                 tableHTML = '<table><thead><tr>';
 
-                // Header row
-                const headers = line.split('|').filter(h => h.trim());
+                // Header row — preserve all columns including empty ones
+                const allHeaders = line.split('|');
+                const headers = allHeaders.slice(
+                    allHeaders[0].trim() === '' ? 1 : 0,
+                    allHeaders[allHeaders.length - 1].trim() === '' ? allHeaders.length - 1 : allHeaders.length
+                );
                 headers.forEach(header => {
                     tableHTML += `<th>${header.trim()}</th>`;
                 });
@@ -585,8 +589,13 @@ function convertMarkdownTable(text) {
                 i++;
                 continue;
             } else {
-                // Data row
-                const cells = line.split('|').filter(c => c.trim());
+                // Data row — split then remove only the leading/trailing empty slots
+                const allCells = line.split('|');
+                // Drop first and last empty strings (from leading/trailing |)
+                const cells = allCells.slice(
+                    allCells[0].trim() === '' ? 1 : 0,
+                    allCells[allCells.length - 1].trim() === '' ? allCells.length - 1 : allCells.length
+                );
                 tableHTML += '<tr>';
                 cells.forEach(cell => {
                     tableHTML += `<td>${cell.trim()}</td>`;

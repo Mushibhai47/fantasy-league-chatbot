@@ -1264,7 +1264,7 @@ async def chat(
                         # Pitcher header
                         header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
                                   '$', 'PTS', '$OBP$', '$MT', '$FS',
-                                  'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR_P',
+                                  'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                                   'ERA', 'WHIP',
                                   'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
                                   'Games', 'H/A', 'R/L', 'Timestamp']
@@ -1607,7 +1607,7 @@ async def chat(
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
                 p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
                             '$', 'PTS', '$OBP$', '$MT', '$FS',
-                            'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR_P',
+                            'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                             'ERA', 'WHIP',
                             'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
                             'Games', 'H/A', 'R/L', 'Timestamp']
