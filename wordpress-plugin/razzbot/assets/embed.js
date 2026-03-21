@@ -598,7 +598,10 @@ function convertMarkdownTable(text) {
                 );
                 tableHTML += '<tr>';
                 cells.forEach(cell => {
-                    tableHTML += `<td>${cell.trim()}</td>`;
+                    const val = cell.trim();
+                    const isNumeric = /^-?[\d.]+$/.test(val);
+                    const align = isNumeric ? ' style="text-align:right"' : '';
+                    tableHTML += `<td${align}>${val}</td>`;
                 });
                 tableHTML += '</tr>';
             }
