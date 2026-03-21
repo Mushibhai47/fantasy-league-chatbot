@@ -1220,7 +1220,7 @@ async def chat(
                     if not is_pitcher_group:
                         # Hitter header
                         header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                                  '$', 'PTS', '$OBP$', '$MT', '$FS',
+                                  'PROJ $', 'PROJ PTS', '$OBP$', '$MT', '$FS',
                                   'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG',
                                   'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
                                   'Games', 'H/A', 'R/L', 'Timestamp']
@@ -1263,7 +1263,7 @@ async def chat(
                     else:
                         # Pitcher header
                         header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                                  '$', 'PTS', '$OBP$', '$MT', '$FS',
+                                  'PROJ $', 'PROJ PTS', '$OBP$', '$MT', '$FS',
                                   'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                                   'ERA', 'WHIP',
                                   'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
@@ -1320,7 +1320,7 @@ async def chat(
                             header.append('Pitcher')
                         if has_throws_col:
                             header.append('R/L')
-                        header += ['$', 'PTS', 'G', 'PA', 'R', 'HR', 'RBI', 'SB',
+                        header += ['PROJ $', 'PROJ PTS', 'G', 'PA', 'R', 'HR', 'RBI', 'SB',
                                    'AVG', 'OBP', 'SLG',
                                    'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
                         lines.append('| ' + ' | '.join(header) + ' |')
@@ -1360,7 +1360,7 @@ async def chat(
                             lines.append('| ' + ' | '.join(row_parts) + ' |')
                     else:
                         # Pitcher header: Name, Team, H, Pos, Y! Pos, Date, Opp, $, PTS, GS, QS, W, L, IP, H, ER, K, BB, HR, ERA, WHIP, R%, ROS12, $/G, ROS15, Timestamp
-                        header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', '$', 'PTS',
+                        header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', 'PROJ $', 'PROJ PTS',
                                   'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                                   'ERA', 'WHIP',
                                   'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
@@ -1593,7 +1593,7 @@ async def chat(
             if hitter_rows:
                 lines.append(f"**Hitters ({len(hitter_rows)})**\n")
                 h_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                            '$', 'PTS', '$OBP$', '$MT', '$FS',
+                            'PROJ $', 'PROJ PTS', '$OBP$', '$MT', '$FS',
                             'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG',
                             'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
                             'Games', 'H/A', 'R/L', 'Timestamp']
@@ -1606,7 +1606,7 @@ async def chat(
             if pitcher_rows:
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
                 p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                            '$', 'PTS', '$OBP$', '$MT', '$FS',
+                            'PROJ $', 'PROJ PTS', '$OBP$', '$MT', '$FS',
                             'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                             'ERA', 'WHIP',
                             'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
@@ -1801,7 +1801,7 @@ async def chat(
             if hitter_rows:
                 lines.append(f"**Hitters ({len(hitter_rows)})**\n")
                 h_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp',
-                            'Pitcher', 'R/L', '$', 'PTS',
+                            'Pitcher', 'R/L', 'PROJ $', 'PROJ PTS',
                             'G', 'PA', 'R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG',
                             'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
                 lines.append('| ' + ' | '.join(h_header) + ' |')
@@ -1812,7 +1812,7 @@ async def chat(
             # Pitchers table
             if pitcher_rows:
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
-                p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', '$', 'PTS',
+                p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', 'PROJ $', 'PROJ PTS',
                             'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                             'ERA', 'WHIP',
                             'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
