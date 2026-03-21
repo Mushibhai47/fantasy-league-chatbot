@@ -214,7 +214,7 @@ async def chat(
 
                     # Points value (for points leagues)
                     pts = row.get('PTS', '')
-                    if pts and str(pts) not in ('nan', 'None', ''):
+                    if pts != '' and str(pts) not in ('nan', 'None'):
                         dollar_parts.append(f"PTS:{pts}")
 
                     # Per-game value
@@ -734,9 +734,9 @@ async def chat(
             lines.append(f"**League Overview $ ({requested_type}) - {num_teams} Teams**\n")
             # Build header dynamically - only include non-zero columns
             has_pts = any(team_totals[t].get('PTS', 0) != 0 for t in ranked_teams)
-            header_parts = ['Owner', '$']
+            header_parts = ['Owner', 'PROJ $']
             if has_pts:
-                header_parts.append('PTS')
+                header_parts.append('PROJ PTS')
             header_parts += ['H', 'SP', 'RP']
             for cat in active_cats:
                 header_parts.append(f'${cat}')
@@ -837,7 +837,7 @@ async def chat(
                 # Determine active hitter cats
                 h_cats = [c for c in active_cats if c in HITTER_CATS]
                 lines.append(f"**Hitters ({len(hitters)})**\n")
-                h_header = ['Name', 'Pos', 'Team', '$', 'PTS', '$/G']
+                h_header = ['Name', 'Pos', 'Team', 'PROJ $', 'PROJ PTS', '$/G']
                 for cat in h_cats:
                     h_header.append(f'${cat}')
                 lines.append('| ' + ' | '.join(h_header) + ' |')
@@ -886,7 +886,7 @@ async def chat(
             if pitchers:
                 p_cats = [c for c in active_cats if c in PITCHER_CATS]
                 lines.append(f"\n**Pitchers ({len(pitchers)})**\n")
-                p_header = ['Name', 'Pos', 'Team', '$', 'PTS', '$/G']
+                p_header = ['Name', 'Pos', 'Team', 'PROJ $', 'PROJ PTS', '$/G']
                 for cat in p_cats:
                     p_header.append(f'${cat}')
                 lines.append('| ' + ' | '.join(p_header) + ' |')
