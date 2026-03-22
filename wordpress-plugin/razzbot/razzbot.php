@@ -25,13 +25,13 @@ function razzbot_conditional_enqueue() {
     }
     wp_enqueue_style(
         'razzbot-css',
-        RAZZBOT_PLUGIN_URL . 'assets/embed.css',
+        RAZZBOT_PLUGIN_URL . 'assets/embed-v2.css',
         [],
         RAZZBOT_VERSION
     );
     wp_enqueue_script(
         'razzbot-js',
-        RAZZBOT_PLUGIN_URL . 'assets/embed.js',
+        RAZZBOT_PLUGIN_URL . 'assets/embed-v2.js',
         [],
         RAZZBOT_VERSION,
         true  // load in footer
