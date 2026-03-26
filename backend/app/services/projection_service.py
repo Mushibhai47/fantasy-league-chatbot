@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 import logging
 import os
 import time
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,7 +15,14 @@ logger = logging.getLogger(__name__)
 # Global cache for projections (shared across all instances)
 _PROJECTION_CACHE = {}
 _PROJECTION_CACHE_TIME = {}
-_CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours
+_CACHE_TTL_SECONDS = 5 * 60  # 5 minutes
+
+_EST = timezone(timedelta(hours=-5))
+
+def _is_active_hours() -> bool:
+    """Return True if current time is between 6AM and 11PM EST."""
+    now_est = datetime.now(_EST)
+    return 6 <= now_est.hour < 23
 
 
 class ProjectionService:
@@ -56,14 +64,14 @@ class ProjectionService:
         """
         global _PROJECTION_CACHE, _PROJECTION_CACHE_TIME
 
-        # Check global cache first (valid for 6 hours)
+        # Check global cache first (5-min TTL during 6AM-11PM EST, otherwise keep cached)
         if self.projection_type in _PROJECTION_CACHE:
             age = time.time() - _PROJECTION_CACHE_TIME.get(self.projection_type, 0)
-            if age < _CACHE_TTL_SECONDS:
+            if age < _CACHE_TTL_SECONDS or not _is_active_hours():
                 logger.info(f"Using cached {self.projection_type} projections ({len(_PROJECTION_CACHE[self.projection_type])} players, age {int(age/60)}m)")
                 return _PROJECTION_CACHE[self.projection_type]
             else:
-                logger.info(f"Cache expired for {self.projection_type} projections (age {int(age/3600)}h), refreshing")
+                logger.info(f"Cache expired for {self.projection_type} projections, refreshing (active hours)")
 
         try:
             # Set up headers based on Rudy's working Postman example
