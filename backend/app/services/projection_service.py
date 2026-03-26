@@ -5,6 +5,7 @@ import cloudscraper
 from typing import Dict, List, Optional
 import logging
 import os
+import time
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 # Global cache for projections (shared across all instances)
 _PROJECTION_CACHE = {}
+_PROJECTION_CACHE_TIME = {}
+_CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours
 
 
 class ProjectionService:
@@ -51,12 +54,16 @@ class ProjectionService:
         Returns:
             DataFrame with player projections
         """
-        global _PROJECTION_CACHE
+        global _PROJECTION_CACHE, _PROJECTION_CACHE_TIME
 
-        # Check global cache first
+        # Check global cache first (valid for 6 hours)
         if self.projection_type in _PROJECTION_CACHE:
-            logger.info(f"Using cached {self.projection_type} projections ({len(_PROJECTION_CACHE[self.projection_type])} players)")
-            return _PROJECTION_CACHE[self.projection_type]
+            age = time.time() - _PROJECTION_CACHE_TIME.get(self.projection_type, 0)
+            if age < _CACHE_TTL_SECONDS:
+                logger.info(f"Using cached {self.projection_type} projections ({len(_PROJECTION_CACHE[self.projection_type])} players, age {int(age/60)}m)")
+                return _PROJECTION_CACHE[self.projection_type]
+            else:
+                logger.info(f"Cache expired for {self.projection_type} projections (age {int(age/3600)}h), refreshing")
 
         try:
             # Set up headers based on Rudy's working Postman example
@@ -98,7 +105,8 @@ class ProjectionService:
 
             # Cache globally for fast subsequent requests
             _PROJECTION_CACHE[self.projection_type] = df
-            logger.info(f"Fetched {len(df)} player projections from Razzball API (cached for future requests)")
+            _PROJECTION_CACHE_TIME[self.projection_type] = time.time()
+            logger.info(f"Fetched {len(df)} player projections from Razzball API (cached for 6 hours)")
             return df
 
         except Exception as e:
