@@ -1155,15 +1155,20 @@ async def chat(
                         except (ValueError, TypeError):
                             dollar_val = 0.0
 
-                        # RP special case: include if SV > 0.2 even below threshold
+                        # RP special case: include if SV > 0.2 or G > 0 even below threshold
                         pos = str(row.get('Pos', '?'))
                         sv_val = 0.0
+                        g_val = 0.0
                         try:
                             sv_val = float(row.get('SV', 0)) if str(row.get('SV', '')).replace('.','').replace('-','').isdigit() else 0.0
                         except (ValueError, TypeError):
                             sv_val = 0.0
+                        try:
+                            g_val = float(row.get('G', 0)) if str(row.get('G', '')).replace('.','').replace('-','').isdigit() else 0.0
+                        except (ValueError, TypeError):
+                            g_val = 0.0
 
-                        if dollar_val >= -5 or (pos.upper() == 'RP' and sv_val > 0.2):
+                        if dollar_val >= -5 or (pos.upper() == 'RP' and (sv_val > 0.2 or g_val > 0)):
                             name = str(row.get('Name', '?'))
                             name = _re.sub(r'\[player id=\d+\]|\[/player\]', '', name).strip()
                             team = str(row.get('Team', '?'))
@@ -1272,7 +1277,7 @@ async def chat(
                     else:
                         # Pitcher header
                         header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                                  'PROJ $', 'PROJ PTS', '$OBP$', '$MT',
+                                  'PROJ $', 'PROJ PTS', '$OBP$',
                                   'G', 'GS', 'QS', 'W', 'L', 'SV', 'HLD', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                                   'ERA', 'WHIP',
                                   'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
@@ -1291,7 +1296,6 @@ async def chat(
                                 str(round(fa['dollar'], 1)),
                                 fmt_stat(r.get('PTS', '')),
                                 fmt_stat(r.get('$/G$', '')),
-                                fmt_stat(r.get('$ MT$', '')),
                                 fmt_g(r.get('G', '')),
                                 fmt_stat(r.get('GS', '')),
                                 fmt_stat(r.get('QS', '')),
@@ -1545,7 +1549,7 @@ async def chat(
                         pitcher_rows.append((dollar, [
                             name, team, handedness, pos, y_pos, wof_str, opp,
                             str(round(dollar, 1)), pts_weekly,
-                            obp_dollar, mt_dollar,
+                            obp_dollar,
                             fmt_g(weekly_row.get('G', '')),
                             fmt_stat(weekly_row.get('GS', '')), fmt_stat(weekly_row.get('QS', '')),
                             fmt_stat(weekly_row.get('W', '')), fmt_stat(weekly_row.get('L', '')),
@@ -1622,7 +1626,7 @@ async def chat(
             if pitcher_rows:
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
                 p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                            'PROJ $', 'PROJ PTS', '$OBP$', '$MT',
+                            'PROJ $', 'PROJ PTS', '$OBP$',
                             'G', 'GS', 'QS', 'W', 'L', 'SV', 'HLD', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                             'ERA', 'WHIP',
                             'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
