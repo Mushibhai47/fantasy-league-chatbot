@@ -453,6 +453,15 @@ async def chat(
             except (ValueError, TypeError):
                 return str(v)
 
+        def fmt_g(v):
+            """Format G (games) as decimal with 1 place: 0.5, 1.0, 2.0"""
+            if str(v) in ('nan', 'None', ''):
+                return '0.0'
+            try:
+                return f"{float(v):.1f}"
+            except (ValueError, TypeError):
+                return str(v)
+
         def fetch_ros_lookup(id_col: str = None):
             """Fetch ROS projections and build a lookup by platform ID.
             Pass id_col to force a specific column (e.g. same as weekly lookup)."""
@@ -1240,7 +1249,7 @@ async def chat(
                                 fmt_stat(r.get('$/G$', '')),
                                 fmt_stat(r.get('$ MT$', '')),
                                 fmt_stat(r.get('$ FS$', '')),
-                                fmt_stat(r.get('G', '')),
+                                fmt_g(r.get('G', '')),
                                 fmt_stat(r.get('PA', '')),
                                 fmt_stat(r.get('R', '')),
                                 fmt_stat(r.get('HR', '')),
@@ -1263,8 +1272,8 @@ async def chat(
                     else:
                         # Pitcher header
                         header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                                  'PROJ $', 'PROJ PTS', '$OBP$', '$MT', '$FS',
-                                  'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
+                                  'PROJ $', 'PROJ PTS', '$OBP$', '$MT',
+                                  'G', 'GS', 'QS', 'W', 'L', 'SV', 'HLD', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                                   'ERA', 'WHIP',
                                   'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
                                   'Games', 'H/A', 'R/L', 'Timestamp']
@@ -1283,11 +1292,13 @@ async def chat(
                                 fmt_stat(r.get('PTS', '')),
                                 fmt_stat(r.get('$/G$', '')),
                                 fmt_stat(r.get('$ MT$', '')),
-                                fmt_stat(r.get('$ FS$', '')),
+                                fmt_g(r.get('G', '')),
                                 fmt_stat(r.get('GS', '')),
                                 fmt_stat(r.get('QS', '')),
                                 fmt_stat(r.get('W', '')),
                                 fmt_stat(r.get('L', '')),
+                                fmt_stat(r.get('SV', '')),
+                                fmt_stat(r.get('HLD', '')),
                                 fmt_stat(r.get('IP', '')),
                                 fmt_stat(r.get('H_Pitch', r.get('H_pitch', ''))),
                                 fmt_stat(r.get('ER', '')),
@@ -1342,7 +1353,7 @@ async def chat(
                             row_parts += [
                                 str(round(fa['dollar'], 1)),
                                 fmt_stat(r.get('PTS', '')),
-                                fmt_stat(r.get('G', '')),
+                                fmt_g(r.get('G', '')),
                                 fmt_stat(r.get('PA', '')),
                                 fmt_stat(r.get('R', '')),
                                 fmt_stat(r.get('HR', '')),
@@ -1359,9 +1370,9 @@ async def chat(
                             ]
                             lines.append('| ' + ' | '.join(row_parts) + ' |')
                     else:
-                        # Pitcher header: Name, Team, H, Pos, Y! Pos, Date, Opp, $, PTS, GS, QS, W, L, IP, H, ER, K, BB, HR, ERA, WHIP, R%, ROS12, $/G, ROS15, Timestamp
+                        # Pitcher header: Name, Team, H, Pos, Y! Pos, Date, Opp, $, PTS, G, GS, QS, W, L, SV, HLD, IP, H, ER, K, BB, HR, ERA, WHIP, R%, ROS12, $/G, ROS15, Timestamp
                         header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', 'PROJ $', 'PROJ PTS',
-                                  'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
+                                  'G', 'GS', 'QS', 'W', 'L', 'SV', 'HLD', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                                   'ERA', 'WHIP',
                                   'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
                         lines.append('| ' + ' | '.join(header) + ' |')
@@ -1377,10 +1388,13 @@ async def chat(
                                 _clean_str(r.get('Opp', '')),
                                 str(round(fa['dollar'], 1)),
                                 fmt_stat(r.get('PTS', '')),
+                                fmt_g(r.get('G', '')),
                                 fmt_stat(r.get('GS', '')),
                                 fmt_stat(r.get('QS', '')),
                                 fmt_stat(r.get('W', '')),
                                 fmt_stat(r.get('L', '')),
+                                fmt_stat(r.get('SV', '')),
+                                fmt_stat(r.get('HLD', '')),
                                 fmt_stat(r.get('IP', '')),
                                 fmt_stat(r.get('H_Pitch', r.get('H_pitch', ''))),
                                 fmt_stat(r.get('ER', '')),
@@ -1531,9 +1545,11 @@ async def chat(
                         pitcher_rows.append((dollar, [
                             name, team, handedness, pos, y_pos, wof_str, opp,
                             str(round(dollar, 1)), pts_weekly,
-                            obp_dollar, mt_dollar, fs_dollar,
+                            obp_dollar, mt_dollar,
+                            fmt_g(weekly_row.get('G', '')),
                             fmt_stat(weekly_row.get('GS', '')), fmt_stat(weekly_row.get('QS', '')),
                             fmt_stat(weekly_row.get('W', '')), fmt_stat(weekly_row.get('L', '')),
+                            fmt_stat(weekly_row.get('SV', '')), fmt_stat(weekly_row.get('HLD', '')),
                             fmt_stat(weekly_row.get('IP', '')),
                             fmt_stat(weekly_row.get('H_Pitch', weekly_row.get('H_pitch', ''))),
                             fmt_stat(weekly_row.get('ER', '')),
@@ -1549,7 +1565,7 @@ async def chat(
                             name, team, handedness, pos, y_pos, wof_str, opp,
                             str(round(dollar, 1)), pts_weekly,
                             obp_dollar, mt_dollar, fs_dollar,
-                            str(games),
+                            fmt_g(weekly_row.get('G', '')),
                             fmt_stat(weekly_row.get('PA', '')),
                             fmt_stat(weekly_row.get('R', '')), fmt_stat(weekly_row.get('HR', '')),
                             fmt_stat(weekly_row.get('RBI', '')), fmt_stat(weekly_row.get('SB', '')),
@@ -1606,8 +1622,8 @@ async def chat(
             if pitcher_rows:
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
                 p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                            'PROJ $', 'PROJ PTS', '$OBP$', '$MT', '$FS',
-                            'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
+                            'PROJ $', 'PROJ PTS', '$OBP$', '$MT',
+                            'G', 'GS', 'QS', 'W', 'L', 'SV', 'HLD', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                             'ERA', 'WHIP',
                             'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
                             'Games', 'H/A', 'R/L', 'Timestamp']
@@ -1740,8 +1756,10 @@ async def chat(
                         pitcher_rows.append((dollar, [
                             name, team, handedness_d, pos, y_pos_d, date_d, opp,
                             str(round(dollar, 1)), pts_daily,
+                            fmt_g(daily_row.get('G', '')),
                             fmt_stat(daily_row.get('GS', '')), fmt_stat(daily_row.get('QS', '')),
                             fmt_stat(daily_row.get('W', '')), fmt_stat(daily_row.get('L', '')),
+                            fmt_stat(daily_row.get('SV', '')), fmt_stat(daily_row.get('HLD', '')),
                             fmt_stat(daily_row.get('IP', '')),
                             fmt_stat(daily_row.get('H_Pitch', daily_row.get('H_pitch', ''))),
                             fmt_stat(daily_row.get('ER', '')),
@@ -1758,7 +1776,7 @@ async def chat(
                             name, team, handedness_d, pos, y_pos_d, date_d, opp,
                             pitcher_name_d, throws_d,
                             str(round(dollar, 1)), pts_daily,
-                            fmt_stat(daily_row.get('G', '')),
+                            fmt_g(daily_row.get('G', '')),
                             fmt_stat(daily_row.get('PA', '')),
                             fmt_stat(daily_row.get('R', '')), fmt_stat(daily_row.get('HR', '')),
                             fmt_stat(daily_row.get('RBI', '')), fmt_stat(daily_row.get('SB', '')),
@@ -1813,7 +1831,7 @@ async def chat(
             if pitcher_rows:
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
                 p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'Date', 'Opp', 'PROJ $', 'PROJ PTS',
-                            'GS', 'QS', 'W', 'L', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
+                            'G', 'GS', 'QS', 'W', 'L', 'SV', 'HLD', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                             'ERA', 'WHIP',
                             'R%', 'ROS12', '$/G', 'ROS15', 'Timestamp']
                 lines.append('| ' + ' | '.join(p_header) + ' |')
