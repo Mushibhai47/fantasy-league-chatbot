@@ -111,6 +111,9 @@ class ProjectionService:
             else:
                 df = pd.DataFrame(data)
 
+            # Normalize column names: strip whitespace and non-breaking spaces (\xa0)
+            df.columns = [c.strip().replace('\xa0', '') for c in df.columns]
+
             # Cache globally for fast subsequent requests
             _PROJECTION_CACHE[self.projection_type] = df
             _PROJECTION_CACHE_TIME[self.projection_type] = time.time()
