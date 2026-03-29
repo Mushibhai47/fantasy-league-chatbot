@@ -200,114 +200,120 @@ async def chat(
                             logger.info(f"⚠️ No league type data found, using all")
 
                 for _, row in filtered_df.iterrows():
-                    # Determine if pitcher based on Pos
-                    pos = str(row.get('Pos', '')).upper()
-                    is_pitcher = pos in ('SP', 'RP', 'P')
+                    try:
+                        # Determine if pitcher based on Pos
+                        pos = str(row.get('Pos', '')).upper()
+                        is_pitcher = pos in ('SP', 'RP', 'P')
 
-                    # Build a rich dollar value string with category breakdowns
-                    dollar_parts = []
+                        # Build a rich dollar value string with category breakdowns
+                        dollar_parts = []
 
-                    # Overall dollar value
-                    overall = row.get('$', row.get('dollar_value', ''))
-                    if overall and str(overall) not in ('nan', 'None', ''):
-                        dollar_parts.append(f"${overall}")
+                        # Overall dollar value
+                        overall = row.get('$', row.get('dollar_value', ''))
+                        if overall and str(overall) not in ('nan', 'None', ''):
+                            dollar_parts.append(f"${overall}")
 
-                    # Points value (for points leagues)
-                    pts = row.get('PTS', '')
-                    if pts != '' and str(pts) not in ('nan', 'None'):
-                        dollar_parts.append(f"PTS:{pts}")
+                        # Points value (for points leagues)
+                        pts = row.get('PTS', '')
+                        if pts != '' and str(pts) not in ('nan', 'None'):
+                            dollar_parts.append(f"PTS:{pts}")
 
-                    # Per-game value
-                    per_game = row.get('$/G$', '')
-                    if per_game and str(per_game) not in ('nan', 'None', ''):
-                        dollar_parts.append(f"$/G:{per_game}")
+                        # Per-game value
+                        per_game = row.get('$/G$', '')
+                        if per_game and str(per_game) not in ('nan', 'None', ''):
+                            dollar_parts.append(f"$/G:{per_game}")
 
-                    if is_pitcher:
-                        # Pitcher categories ONLY
-                        for cat in ['$W$', '$SV$', '$K$', '$ERA$', '$WHIP$', '$QS$', '$HLD$']:
-                            val = row.get(cat, '')
-                            if val and str(val) not in ('nan', 'None', ''):
-                                cat_name = cat.replace('$', '')
-                                dollar_parts.append(f"${cat_name}:{val}")
-                    else:
-                        # Hitter categories ONLY
-                        for cat in ['$R$', '$HR$', '$RBI$', '$SB$', '$AVG$', '$OBP$']:
-                            val = row.get(cat, '')
-                            if val and str(val) not in ('nan', 'None', ''):
-                                cat_name = cat.replace('$', '')
-                                dollar_parts.append(f"${cat_name}:{val}")
+                        if is_pitcher:
+                            # Pitcher categories ONLY
+                            for cat in ['$W$', '$SV$', '$K$', '$ERA$', '$WHIP$', '$QS$', '$HLD$']:
+                                val = row.get(cat, '')
+                                if val and str(val) not in ('nan', 'None', ''):
+                                    cat_name = cat.replace('$', '')
+                                    dollar_parts.append(f"${cat_name}:{val}")
+                        else:
+                            # Hitter categories ONLY
+                            for cat in ['$R$', '$HR$', '$RBI$', '$SB$', '$AVG$', '$OBP$']:
+                                val = row.get(cat, '')
+                                if val and str(val) not in ('nan', 'None', ''):
+                                    cat_name = cat.replace('$', '')
+                                    dollar_parts.append(f"${cat_name}:{val}")
 
-                    dollar_str = ' '.join(dollar_parts) if dollar_parts else ''
+                        dollar_str = ' '.join(dollar_parts) if dollar_parts else ''
 
-                    # Always store position (even if no dollar value)
-                    nfbc_id = row.get('NFBCID', '')
-                    fantrax_id = row.get('FantraxID', '')
-                    row_pos = str(row.get('Pos', '')).strip()
-                    if row_pos and row_pos not in ('nan', 'None', ''):
-                        if nfbc_id and str(nfbc_id) not in ('nan', 'None', ''):
-                            proj_pos_lookup[str(nfbc_id)] = row_pos
-                        if fantrax_id and str(fantrax_id) not in ('nan', 'None', ''):
-                            proj_pos_lookup[str(fantrax_id)] = row_pos
-                        # Also store by CBS name key for CBS leagues
-                        cbs_sn_pos = str(row.get('CBSSportsName', ''))
-                        if cbs_sn_pos and cbs_sn_pos not in ('nan', 'None', ''):
-                            cbs_pos_key = _normalize_cbs_name(cbs_sn_pos)
-                            if cbs_pos_key:
-                                proj_pos_lookup[cbs_pos_key] = row_pos
+                        # Always store position (even if no dollar value)
+                        nfbc_id = row.get('NFBCID', '')
+                        fantrax_id = row.get('FantraxID', '')
+                        row_pos = str(row.get('Pos', '')).strip()
+                        if row_pos and row_pos not in ('nan', 'None', ''):
+                            if nfbc_id and str(nfbc_id) not in ('nan', 'None', ''):
+                                proj_pos_lookup[str(nfbc_id)] = row_pos
+                            if fantrax_id and str(fantrax_id) not in ('nan', 'None', ''):
+                                proj_pos_lookup[str(fantrax_id)] = row_pos
+                            # Also store by CBS name key for CBS leagues
+                            cbs_sn_pos = str(row.get('CBSSportsName', ''))
+                            if cbs_sn_pos and cbs_sn_pos not in ('nan', 'None', ''):
+                                cbs_pos_key = _normalize_cbs_name(cbs_sn_pos)
+                                if cbs_pos_key:
+                                    proj_pos_lookup[cbs_pos_key] = row_pos
 
-                    if dollar_str:
-                        # Store by NFBCID (most reliable for NFBC CSVs)
-                        if nfbc_id and str(nfbc_id) not in ('nan', 'None', ''):
-                            nfbc_lookup[str(nfbc_id)] = dollar_str
+                        if dollar_str:
+                            # Store by NFBCID (most reliable for NFBC CSVs)
+                            if nfbc_id and str(nfbc_id) not in ('nan', 'None', ''):
+                                nfbc_lookup[str(nfbc_id)] = dollar_str
 
-                        # Store by FantraxID
-                        if fantrax_id and str(fantrax_id) not in ('nan', 'None', ''):
-                            fantrax_lookup[str(fantrax_id)] = dollar_str
+                            # Store by FantraxID
+                            if fantrax_id and str(fantrax_id) not in ('nan', 'None', ''):
+                                fantrax_lookup[str(fantrax_id)] = dollar_str
 
-                        # Store by normalized CBSSportsName (most reliable for CBS leagues)
-                        cbs_sn = str(row.get('CBSSportsName', ''))
-                        if cbs_sn and cbs_sn not in ('nan', 'None', ''):
-                            cbs_key = _normalize_cbs_name(cbs_sn)
-                            if cbs_key:
-                                cbs_name_lookup[cbs_key] = dollar_str
+                            # Store by normalized CBSSportsName (most reliable for CBS leagues)
+                            cbs_sn = str(row.get('CBSSportsName', ''))
+                            if cbs_sn and cbs_sn not in ('nan', 'None', ''):
+                                cbs_key = _normalize_cbs_name(cbs_sn)
+                                if cbs_key:
+                                    cbs_name_lookup[cbs_key] = dollar_str
 
-                        # Store by name (fallback)
-                        proj_name = str(row.get('Name', '')).lower()
-                        proj_name = re.sub(r'\[player id=\d+\]|\[/player\]', '', proj_name).strip()
-                        if proj_name:
-                            name_lookup[proj_name] = dollar_str
+                            # Store by name (fallback)
+                            proj_name = str(row.get('Name', '')).lower()
+                            proj_name = re.sub(r'\[player id=\d+\]|\[/player\]', '', proj_name).strip()
+                            if proj_name:
+                                name_lookup[proj_name] = dollar_str
+                    except Exception as row_err:
+                        logger.warning(f"⚠️ Skipping projection row due to error: {row_err} | row={dict(row)}")
 
                 # Second pass: fill CBS entries that LeagueType filtering may have excluded
                 # (e.g. a player only in MLB12 data when requested_type filtered to AL12/NL12)
                 if filtered_df is not _projections_df and 'CBSSportsName' in _projections_df.columns:
                     for _, row2 in _projections_df.iterrows():
-                        cbs_sn2 = str(row2.get('CBSSportsName', ''))
-                        if not cbs_sn2 or cbs_sn2 in ('nan', 'None', ''):
-                            continue
-                        cbs_key2 = _normalize_cbs_name(cbs_sn2)
-                        if not cbs_key2 or cbs_key2 in cbs_name_lookup:
-                            continue  # Already captured from filtered data — don't override
-                        pos2 = str(row2.get('Pos', '')).upper()
-                        is_p2 = pos2 in ('SP', 'RP', 'P')
-                        dp2 = []
-                        overall2 = row2.get('$', row2.get('dollar_value', ''))
-                        if overall2 and str(overall2) not in ('nan', 'None', ''):
-                            dp2.append(f"${overall2}")
-                        pts2 = row2.get('PTS', '')
-                        if pts2 and str(pts2) not in ('nan', 'None', ''):
-                            dp2.append(f"PTS:{pts2}")
-                        pg2 = row2.get('$/G$', '')
-                        if pg2 and str(pg2) not in ('nan', 'None', ''):
-                            dp2.append(f"$/G:{pg2}")
-                        for cat2 in (['$W$', '$SV$', '$K$', '$ERA$', '$WHIP$', '$QS$', '$HLD$'] if is_p2 else ['$R$', '$HR$', '$RBI$', '$SB$', '$AVG$', '$OBP$']):
-                            v2 = row2.get(cat2, '')
-                            if v2 and str(v2) not in ('nan', 'None', ''):
-                                dp2.append(f"${cat2.replace('$', '')}:{v2}")
-                        ds2 = ' '.join(dp2) if dp2 else ''
-                        if ds2:
-                            cbs_name_lookup[cbs_key2] = ds2
-                        if cbs_key2 not in proj_pos_lookup and pos2 and pos2 not in ('nan', 'None', ''):
-                            proj_pos_lookup[cbs_key2] = pos2
+                        try:
+                            cbs_sn2 = str(row2.get('CBSSportsName', ''))
+                            if not cbs_sn2 or cbs_sn2 in ('nan', 'None', ''):
+                                continue
+                            cbs_key2 = _normalize_cbs_name(cbs_sn2)
+                            if not cbs_key2 or cbs_key2 in cbs_name_lookup:
+                                continue  # Already captured from filtered data — don't override
+                            pos2 = str(row2.get('Pos', '')).upper()
+                            is_p2 = pos2 in ('SP', 'RP', 'P')
+                            dp2 = []
+                            overall2 = row2.get('$', row2.get('dollar_value', ''))
+                            if overall2 and str(overall2) not in ('nan', 'None', ''):
+                                dp2.append(f"${overall2}")
+                            pts2 = row2.get('PTS', '')
+                            if pts2 and str(pts2) not in ('nan', 'None', ''):
+                                dp2.append(f"PTS:{pts2}")
+                            pg2 = row2.get('$/G$', '')
+                            if pg2 and str(pg2) not in ('nan', 'None', ''):
+                                dp2.append(f"$/G:{pg2}")
+                            for cat2 in (['$W$', '$SV$', '$K$', '$ERA$', '$WHIP$', '$QS$', '$HLD$'] if is_p2 else ['$R$', '$HR$', '$RBI$', '$SB$', '$AVG$', '$OBP$']):
+                                v2 = row2.get(cat2, '')
+                                if v2 and str(v2) not in ('nan', 'None', ''):
+                                    dp2.append(f"${cat2.replace('$', '')}:{v2}")
+                            ds2 = ' '.join(dp2) if dp2 else ''
+                            if ds2:
+                                cbs_name_lookup[cbs_key2] = ds2
+                            if cbs_key2 not in proj_pos_lookup and pos2 and pos2 not in ('nan', 'None', ''):
+                                proj_pos_lookup[cbs_key2] = pos2
+                        except Exception as row2_err:
+                            logger.warning(f"⚠️ Skipping CBS second-pass row due to error: {row2_err}")
 
                 logger.info(f"💰 Lookups ready ({requested_type}): {len(nfbc_lookup)} NFBC, {len(fantrax_lookup)} Fantrax, {len(cbs_name_lookup)} CBS, {len(name_lookup)} by name")
             except Exception as e:
