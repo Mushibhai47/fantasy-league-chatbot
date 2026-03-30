@@ -139,22 +139,17 @@ async def chat(
             unique_owners = set(r.team_owner for r in owned_rosters[:20])
             logger.info(f"Sample owners in DB: {unique_owners}")
 
-        # Get projections (cached globally - only slow on first request)
+        # Get projections — always delegate to ProjectionService which handles 5-min TTL caching
         global _projections_df
         dollar_lookup = {}
 
-        # PERFORMANCE FIX: Only fetch if cache is empty
-        if _projections_df is None or len(_projections_df) == 0:
-            logger.info("⏳ Fetching projections (first time only)...")
-            projection_service = ProjectionService(projection_type="ros")
-            try:
-                _projections_df = projection_service.fetch_projections()
-                logger.info(f"✅ Projections cached: {len(_projections_df)} players")
-            except Exception as e:
-                logger.warning(f"⚠️ Could not fetch projections: {e}")
-                _projections_df = None
-        else:
-            logger.info(f"✅ Using cached projections: {len(_projections_df)} players")
+        projection_service = ProjectionService(projection_type="ros")
+        try:
+            _projections_df = projection_service.fetch_projections()
+            logger.info(f"✅ Projections ready: {len(_projections_df)} players")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not fetch projections: {e}")
+            _projections_df = None
 
         # Build fast lookup dictionaries from cache (by NFBCID, FantraxID, and name)
         # Detect requested league type — frontend selection takes priority, then message keyword
@@ -1082,16 +1077,15 @@ async def chat(
             else:
                 label = "Today"
 
-            # Fetch the appropriate projections
+            # Fetch the appropriate projections — delegate to ProjectionService (5-min TTL cache)
             if projection_type == "weekly":
-                if _weekly_projections_df is None:
-                    try:
-                        svc = ProjectionService(projection_type="weekly")
-                        _weekly_projections_df = svc.fetch_projections()
-                        logger.info(f"Fetched {len(_weekly_projections_df)} weekly projections")
-                    except Exception as e:
-                        logger.error(f"Failed to fetch weekly projections: {e}")
-                        return f"Could not fetch {label.lower()} projections. Please try again later."
+                try:
+                    svc = ProjectionService(projection_type="weekly")
+                    _weekly_projections_df = svc.fetch_projections()
+                    logger.info(f"Fetched {len(_weekly_projections_df)} weekly projections")
+                except Exception as e:
+                    logger.error(f"Failed to fetch weekly projections: {e}")
+                    return f"Could not fetch {label.lower()} projections. Please try again later."
                 pickup_df = _weekly_projections_df
             else:
                 # Invalidate daily cache if the EST date has changed
@@ -1426,15 +1420,14 @@ async def chat(
             """Generate Weekly Start/Sit - shows user's team with weekly projections (Opp, G, stats)"""
             global _weekly_projections_df
 
-            # Fetch weekly projections if not cached
-            if _weekly_projections_df is None:
-                try:
-                    svc = ProjectionService(projection_type="weekly")
-                    _weekly_projections_df = svc.fetch_projections()
-                    logger.info(f"Fetched {len(_weekly_projections_df)} weekly projections")
-                except Exception as e:
-                    logger.error(f"Failed to fetch weekly projections: {e}")
-                    return "Could not fetch weekly projections. Please try again later."
+            # Fetch weekly projections — delegate to ProjectionService (5-min TTL cache)
+            try:
+                svc = ProjectionService(projection_type="weekly")
+                _weekly_projections_df = svc.fetch_projections()
+                logger.info(f"Fetched {len(_weekly_projections_df)} weekly projections")
+            except Exception as e:
+                logger.error(f"Failed to fetch weekly projections: {e}")
+                return "Could not fetch weekly projections. Please try again later."
 
             weekly_df = _weekly_projections_df
 
@@ -2316,12 +2309,11 @@ async def chat(
         _time_df = None
         if 'week' in msg_lower:
             _time_label = 'WEEKLY'
-            if _weekly_projections_df is None:
-                try:
-                    svc = ProjectionService(projection_type="weekly")
-                    _weekly_projections_df = svc.fetch_projections()
-                except Exception as _te:
-                    logger.warning(f"Could not load weekly data for time lookup: {_te}")
+            try:
+                svc = ProjectionService(projection_type="weekly")
+                _weekly_projections_df = svc.fetch_projections()
+            except Exception as _te:
+                logger.warning(f"Could not load weekly data for time lookup: {_te}")
             _time_df = _weekly_projections_df
         elif 'tomorrow' in msg_lower:
             _time_label = 'TOMORROW'
