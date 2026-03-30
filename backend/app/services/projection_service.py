@@ -64,14 +64,14 @@ class ProjectionService:
         """
         global _PROJECTION_CACHE, _PROJECTION_CACHE_TIME
 
-        # Check global cache first (5-min TTL during 6AM-11PM EST, otherwise keep cached)
+        # Check global cache first (5-min TTL always — data can update at any hour)
         if self.projection_type in _PROJECTION_CACHE:
             age = time.time() - _PROJECTION_CACHE_TIME.get(self.projection_type, 0)
-            if age < _CACHE_TTL_SECONDS or not _is_active_hours():
+            if age < _CACHE_TTL_SECONDS:
                 logger.info(f"Using cached {self.projection_type} projections ({len(_PROJECTION_CACHE[self.projection_type])} players, age {int(age/60)}m)")
                 return _PROJECTION_CACHE[self.projection_type]
             else:
-                logger.info(f"Cache expired for {self.projection_type} projections, refreshing (active hours)")
+                logger.info(f"Cache expired for {self.projection_type} projections, refreshing")
 
         try:
             # Set up headers based on Rudy's working Postman example

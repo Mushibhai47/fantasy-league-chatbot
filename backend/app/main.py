@@ -26,19 +26,18 @@ app.add_middleware(
 )
 
 async def _refresh_projections_loop():
-    """Background task: proactively refresh all projection types every 5 minutes during active hours."""
-    from app.services.projection_service import ProjectionService, _is_active_hours
+    """Background task: proactively refresh all projection types every 5 minutes."""
+    from app.services.projection_service import ProjectionService
     await asyncio.sleep(30)  # wait for startup to settle
     while True:
         try:
-            if _is_active_hours():
-                for proj_type in ["ros", "daily", "weekly"]:
-                    try:
-                        svc = ProjectionService(projection_type=proj_type)
-                        svc.fetch_projections()
-                        logger.info(f"Background refresh: {proj_type} projections updated")
-                    except Exception as e:
-                        logger.error(f"Background refresh failed for {proj_type}: {e}")
+            for proj_type in ["ros", "daily", "weekly"]:
+                try:
+                    svc = ProjectionService(projection_type=proj_type)
+                    svc.fetch_projections()
+                    logger.info(f"Background refresh: {proj_type} projections updated")
+                except Exception as e:
+                    logger.error(f"Background refresh failed for {proj_type}: {e}")
         except Exception as e:
             logger.error(f"Background refresh loop error: {e}")
         await asyncio.sleep(5 * 60)  # wait 5 minutes
