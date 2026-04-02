@@ -1088,20 +1088,14 @@ async def chat(
                     return f"Could not fetch {label.lower()} projections. Please try again later."
                 pickup_df = _weekly_projections_df
             else:
-                # Invalidate daily cache if the EST date has changed
-                today_est = _get_target_date(False)
-                if _daily_cache_date != today_est:
-                    _daily_projections_df = None
-                    _daily_cache_date = today_est
-                    logger.info(f"Daily cache invalidated for new date: {today_est}")
-                if _daily_projections_df is None:
-                    try:
-                        svc = ProjectionService(projection_type="daily")
-                        _daily_projections_df = svc.fetch_projections()
-                        logger.info(f"Fetched {len(_daily_projections_df)} daily projections")
-                    except Exception as e:
-                        logger.error(f"Failed to fetch daily projections: {e}")
-                        return f"Could not fetch {label.lower()} projections. Please try again later."
+                # Always delegate to ProjectionService (5-min TTL cache)
+                try:
+                    svc = ProjectionService(projection_type="daily")
+                    _daily_projections_df = svc.fetch_projections()
+                    logger.info(f"Fetched {len(_daily_projections_df)} daily projections")
+                except Exception as e:
+                    logger.error(f"Failed to fetch daily projections: {e}")
+                    return f"Could not fetch {label.lower()} projections. Please try again later."
                 pickup_df = _daily_projections_df
 
             # Filter to requested league type
@@ -1662,22 +1656,14 @@ async def chat(
 
             day_label = "Tomorrow" if use_tomorrow else "Today"
 
-            # Invalidate daily cache if EST date has changed
-            today_est = _get_target_date(False)
-            if _daily_cache_date != today_est:
-                _daily_projections_df = None
-                _daily_cache_date = today_est
-                logger.info(f"Daily cache invalidated for new date: {today_est}")
-
-            # Fetch daily projections if not cached
-            if _daily_projections_df is None:
-                try:
-                    svc = ProjectionService(projection_type="daily")
-                    _daily_projections_df = svc.fetch_projections()
-                    logger.info(f"Fetched {len(_daily_projections_df)} daily projections")
-                except Exception as e:
-                    logger.error(f"Failed to fetch daily projections: {e}")
-                    return f"Could not fetch daily projections. Please try again later."
+            # Always delegate to ProjectionService (5-min TTL cache)
+            try:
+                svc = ProjectionService(projection_type="daily")
+                _daily_projections_df = svc.fetch_projections()
+                logger.info(f"Fetched {len(_daily_projections_df)} daily projections")
+            except Exception as e:
+                logger.error(f"Failed to fetch daily projections: {e}")
+                return f"Could not fetch daily projections. Please try again later."
 
             daily_df = _daily_projections_df
 
