@@ -26,15 +26,20 @@ app.add_middleware(
 )
 
 async def _refresh_projections_loop():
-    """Background task: proactively refresh all projection types every 5 minutes."""
+    """Background task: proactively refresh all projection types every 5 minutes.
+    Runs sync HTTP fetches in a thread executor to avoid blocking the event loop."""
     from app.services.projection_service import ProjectionService
+    import concurrent.futures
+    loop = asyncio.get_event_loop()
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
     await asyncio.sleep(30)  # wait for startup to settle
     while True:
         try:
             for proj_type in ["ros", "daily", "weekly"]:
                 try:
                     svc = ProjectionService(projection_type=proj_type)
-                    svc.fetch_projections()
+                    await loop.run_in_executor(executor, svc.fetch_projections)
                     logger.info(f"Background refresh: {proj_type} projections updated")
                 except Exception as e:
                     logger.error(f"Background refresh failed for {proj_type}: {e}")
