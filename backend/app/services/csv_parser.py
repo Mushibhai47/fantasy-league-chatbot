@@ -44,7 +44,7 @@ class CSVParser:
         - Team owner name (AA, MG, Doc, etc.) = Owned player
         - Empty/'-' = Free Agent
         """
-        df = pd.read_csv(file_path)
+        df = CSVParser._read_file(file_path)
         players = []
 
         for _, row in df.iterrows():
@@ -81,7 +81,7 @@ class CSVParser:
         Note: NO player IDs in CBS - will need fuzzy matching
         """
         # CBS files have a title row before the header, skip it
-        df = pd.read_csv(file_path, skiprows=1)
+        df = CSVParser._read_file(file_path, skiprows=1)
         players = []
 
         for _, row in df.iterrows():
@@ -152,7 +152,7 @@ class CSVParser:
         Format: id,Players,Owner,Injury,Pos,Team,Own %,Start %,...
         Example: 11802,"Abbott, Andrew",Matt Cathey - TARF,,P,CIN,100,82,...
         """
-        df = pd.read_csv(file_path)
+        df = CSVParser._read_file(file_path)
         players = []
 
         for _, row in df.iterrows():
@@ -180,14 +180,33 @@ class CSVParser:
         return players
 
     @staticmethod
+    def _read_file(file_path: str, skiprows=None, nrows=None) -> pd.DataFrame:
+        """Read CSV or Excel file into a DataFrame."""
+        is_excel = file_path.lower().endswith(('.xls', '.xlsx'))
+        if is_excel:
+            kwargs = {}
+            if skiprows:
+                kwargs['skiprows'] = skiprows
+            if nrows:
+                kwargs['nrows'] = nrows
+            return pd.read_excel(file_path, **kwargs)
+        else:
+            kwargs = {}
+            if skiprows:
+                kwargs['skiprows'] = skiprows
+            if nrows:
+                kwargs['nrows'] = nrows
+            return pd.read_csv(file_path, **kwargs)
+
+    @staticmethod
     def parse_csv(file_path: str) -> tuple[List[Dict], str]:
         """
-        Auto-detect league type and parse CSV
+        Auto-detect league type and parse CSV or Excel file.
         Returns: (players_list, league_type)
         """
         # Try reading normally first
         try:
-            df_sample = pd.read_csv(file_path, nrows=5)
+            df_sample = CSVParser._read_file(file_path, nrows=5)
             league_type = CSVParser.detect_league_type(df_sample)
         except:
             league_type = 'unknown'
@@ -195,7 +214,7 @@ class CSVParser:
         # If detection failed, try skipping first row (CBS format)
         if league_type == 'unknown':
             try:
-                df_sample = pd.read_csv(file_path, skiprows=1, nrows=5)
+                df_sample = CSVParser._read_file(file_path, skiprows=1, nrows=5)
                 league_type = CSVParser.detect_league_type(df_sample)
             except:
                 pass

@@ -25,11 +25,13 @@ async def upload_csv(
     Auto-detects format and parses roster
     """
     # Validate file type
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="File must be a CSV")
+    allowed_extensions = ('.csv', '.xls', '.xlsx')
+    if not any(file.filename.lower().endswith(ext) for ext in allowed_extensions):
+        raise HTTPException(status_code=400, detail="File must be a CSV or Excel file (.csv, .xls, .xlsx)")
 
     # Save uploaded file temporarily
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.csv') as tmp_file:
+    file_ext = os.path.splitext(file.filename.lower())[1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
         content = await file.read()
         tmp_file.write(content)
         tmp_file_path = tmp_file.name
