@@ -375,6 +375,7 @@ async function uploadFile(file) {
     try {
         const formData = new FormData();
         formData.append('file', file);
+        if (state.leagueId) formData.append('existing_league_id', state.leagueId);
 
         // Detect league type from filename
         const filename = file.name.toLowerCase();

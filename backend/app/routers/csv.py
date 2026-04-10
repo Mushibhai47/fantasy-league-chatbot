@@ -1,11 +1,12 @@
 """CSV Upload Router"""
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, League, Roster
 from app.services.csv_parser import CSVParser
 from app.services.player_matcher import PlayerMatcher
 from app.schemas.league import LeagueResponse, RosterResponse, PlayerInRoster
+from typing import Optional
 import uuid
 import tempfile
 import os
@@ -16,6 +17,7 @@ router = APIRouter()
 @router.post("/upload", response_model=LeagueResponse)
 async def upload_csv(
     file: UploadFile = File(...),
+    existing_league_id: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -41,10 +43,26 @@ async def upload_csv(
         parser = CSVParser()
         players_data, league_type = parser.parse_csv(tmp_file_path)
 
-        # Create or get user (for now, create a new one each time)
-        user = User()
-        db.add(user)
-        db.flush()
+        # If re-uploading, delete old rosters and league to prevent accumulation
+        if existing_league_id:
+            try:
+                old_league_uuid = uuid.UUID(existing_league_id)
+                old_league = db.query(League).filter(League.id == old_league_uuid).first()
+                if old_league:
+                    db.query(Roster).filter(Roster.league_id == old_league_uuid).delete()
+                    user = db.query(User).filter(User.id == old_league.user_id).first()
+                    db.delete(old_league)
+                    db.flush()
+            except Exception:
+                user = None
+        else:
+            user = None
+
+        # Create user if needed
+        if not user:
+            user = User()
+            db.add(user)
+            db.flush()
 
         # Create league record
         league = League(
