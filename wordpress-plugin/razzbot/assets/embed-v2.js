@@ -359,10 +359,11 @@ function handleFileDrop(event) {
     document.getElementById('upload-area').classList.remove('dragover');
 
     const file = event.dataTransfer.files[0];
-    if (file && file.name.endsWith('.csv')) {
+    const allowed = ['.csv', '.xls', '.xlsx'];
+    if (file && allowed.some(ext => file.name.toLowerCase().endsWith(ext))) {
         uploadFile(file);
     } else {
-        showStatus(document.getElementById('upload-status'), 'Please upload a CSV file', 'error');
+        showStatus(document.getElementById('upload-status'), 'Please upload a CSV or Excel file', 'error');
     }
 }
 
@@ -389,7 +390,9 @@ async function uploadFile(file) {
         });
 
         if (!response.ok) {
-            throw new Error('Upload failed');
+            let errMsg = 'Upload failed';
+            try { const errData = await response.json(); errMsg = errData.detail || errMsg; } catch {}
+            throw new Error(errMsg);
         }
 
         const data = await response.json();
@@ -416,7 +419,7 @@ async function uploadFile(file) {
 
     } catch (error) {
         console.error('Upload error:', error);
-        showStatus(statusEl, 'Failed to upload file. Please try again.', 'error');
+        showStatus(statusEl, `Failed to upload: ${error.message}`, 'error');
     } finally {
         showLoading(false);
     }

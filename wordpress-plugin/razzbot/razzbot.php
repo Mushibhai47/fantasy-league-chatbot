@@ -84,9 +84,9 @@ function razzball_chatbot_shortcode() {
                     <p class="step-description">Upload your Fantrax, CBS, or NFBC league export file</p>
                     <div class="upload-area" id="upload-area">
                         <div class="upload-icon">📄</div>
-                        <p>Drag and drop your CSV file here</p>
+                        <p>Drag and drop your league file here</p>
                         <p class="upload-or">or</p>
-                        <input type="file" id="file-input" accept=".csv" style="display: none;" />
+                        <input type="file" id="file-input" accept=".csv,.xls,.xlsx" style="display: none;" />
                         <button id="browse-btn" class="btn btn-secondary">Browse Files</button>
                     </div>
                     <div id="upload-status" class="status-message"></div>
