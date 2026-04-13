@@ -1271,7 +1271,7 @@ async def chat(
                     else:
                         # Pitcher header
                         header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                                  'PROJ $', 'PROJ PTS', '$OBP$',
+                                  'PROJ $', 'PROJ PTS',
                                   'G', 'GS', 'QS', 'W', 'L', 'SV', 'HLD', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                                   'ERA', 'WHIP',
                                   'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
@@ -1289,7 +1289,6 @@ async def chat(
                                 _clean_str(r.get('Opp', '')),
                                 str(round(fa['dollar'], 1)),
                                 fmt_stat(r.get('PTS', '')),
-                                fmt_stat(r.get('$/G$', '')),
                                 fmt_g(r.get('G', '')),
                                 fmt_stat(r.get('GS', '')),
                                 fmt_stat(r.get('QS', '')),
@@ -1542,7 +1541,6 @@ async def chat(
                         pitcher_rows.append((dollar, [
                             name, team, handedness, pos, y_pos, wof_str, opp,
                             str(round(dollar, 1)), pts_weekly,
-                            obp_dollar,
                             fmt_g(weekly_row.get('G', '')),
                             fmt_stat(weekly_row.get('GS', '')), fmt_stat(weekly_row.get('QS', '')),
                             fmt_stat(weekly_row.get('W', '')), fmt_stat(weekly_row.get('L', '')),
@@ -1619,7 +1617,7 @@ async def chat(
             if pitcher_rows:
                 lines.append(f"\n**Pitchers ({len(pitcher_rows)})**\n")
                 p_header = ['Name', 'Team', 'H', 'Pos', 'Y! Pos', 'W/o', 'Opp',
-                            'PROJ $', 'PROJ PTS', '$OBP$',
+                            'PROJ $', 'PROJ PTS',
                             'G', 'GS', 'QS', 'W', 'L', 'SV', 'HLD', 'IP', 'H', 'ER', 'K', 'BB', 'HR',
                             'ERA', 'WHIP',
                             'R%', 'ROS12', '$/G', 'ROS15', 'RFS12', 'RFS15',
