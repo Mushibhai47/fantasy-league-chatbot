@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # CORS
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # Yahoo Fantasy API
+    YAHOO_CLIENT_ID: str = ""
+    YAHOO_CLIENT_SECRET: str = ""
+    APP_BASE_URL: str = "https://valiant-healing-production-ce05.up.railway.app"
+
     # Environment
     ENVIRONMENT: str = "development"
 

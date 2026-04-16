@@ -78,8 +78,9 @@ async def health_check():
 
 
 # Include routers
-from app.routers import csv, chat, admin
+from app.routers import csv, chat, admin, yahoo
 
 app.include_router(csv.router, prefix="/api/csv", tags=["CSV Upload"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chatbot"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin Dashboard"])
+app.include_router(yahoo.router, prefix="/api/yahoo", tags=["Yahoo Fantasy"])
