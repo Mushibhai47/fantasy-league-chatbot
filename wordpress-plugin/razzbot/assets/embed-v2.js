@@ -38,6 +38,9 @@ function init() {
         console.log('Running in standalone mode');
     }
 
+    // Handle Yahoo OAuth callback if returning from Yahoo auth
+    handleYahooCallback();
+
     // Load saved data from localStorage
     loadSavedData();
 
@@ -63,6 +66,7 @@ function setupEventListeners() {
         // Skip API key and use free tier
         showSetupScreen('upload');
     });
+    document.getElementById('yahoo-connect-btn')?.addEventListener('click', handleYahooConnect);
     document.getElementById('browse-btn').addEventListener('click', () => {
         document.getElementById('file-input').click();
     });
@@ -421,6 +425,85 @@ async function uploadFile(file) {
     } catch (error) {
         console.error('Upload error:', error);
         showStatus(statusEl, `Failed to upload: ${error.message}`, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Yahoo Fantasy OAuth
+function handleYahooConnect() {
+    // Redirect to Yahoo OAuth flow
+    window.location.href = `${API_BASE_URL}/yahoo/auth`;
+}
+
+async function handleYahooCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const tokenParam = params.get('yahoo_token');
+    const leaguesParam = params.get('yahoo_leagues');
+
+    if (!tokenParam) return;
+
+    // Remove params from URL without reload
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, document.title, cleanUrl);
+
+    const [accessToken, refreshToken] = atob(tokenParam).split(':');
+    const leagueKeys = leaguesParam ? leaguesParam.split(',').filter(Boolean) : [];
+
+    const statusEl = document.getElementById('yahoo-status');
+    showSetupScreen('upload');
+
+    if (!leagueKeys.length) {
+        showStatus(statusEl, 'No Yahoo MLB leagues found for your account.', 'error');
+        return;
+    }
+
+    // If multiple leagues, use the first one (can add picker later)
+    const leagueKey = leagueKeys[0];
+    showStatus(statusEl, `Importing Yahoo league ${leagueKey}...`, 'info');
+    showLoading(true);
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/yahoo/import-league`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                league_key: leagueKey,
+                access_token: accessToken,
+                refresh_token: refreshToken,
+                existing_league_id: state.leagueId || null,
+            })
+        });
+
+        if (!response.ok) {
+            let errMsg = 'Import failed';
+            try { const e = await response.json(); errMsg = e.detail || errMsg; } catch {}
+            throw new Error(errMsg);
+        }
+
+        const data = await response.json();
+        state.leagueId = data.id;
+        state.selectedTeam = null;
+        localStorage.setItem('razzball_league_id', data.id);
+        localStorage.setItem('razzball_yahoo_token', accessToken);
+        localStorage.setItem('razzball_yahoo_refresh', data.refresh_token || refreshToken);
+        localStorage.removeItem('razzball_selected_team');
+
+        showStatus(statusEl, `✅ Yahoo league loaded! ${data.owned_players} players across ${data.teams.length} teams.`, 'success');
+
+        if (data.teams && data.teams.length > 0) {
+            populateTeamSelector(data.teams);
+        }
+
+        setTimeout(() => {
+            showSetupScreen('ready');
+            const ltSelector = document.getElementById('league-type-selector');
+            if (ltSelector) ltSelector.value = state.selectedLeagueType;
+        }, 1500);
+
+    } catch (error) {
+        console.error('Yahoo import error:', error);
+        showStatus(statusEl, `Failed to import Yahoo league: ${error.message}`, 'error');
     } finally {
         showLoading(false);
     }

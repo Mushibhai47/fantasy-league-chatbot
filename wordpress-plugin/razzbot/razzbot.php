@@ -80,8 +80,17 @@ function razzball_chatbot_shortcode() {
                 </div>
 
                 <div class="setup-step" id="step-upload">
-                    <h2>Upload Your League CSV</h2>
-                    <p class="step-description">Upload your Fantrax, CBS, or NFBC league export file</p>
+                    <h2>Load Your League</h2>
+                    <p class="step-description">Connect your Yahoo league or upload a CSV from Fantrax, CBS, or NFBC</p>
+
+                    <!-- Yahoo Connect Button -->
+                    <button id="yahoo-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:10px; background:#6001d2; border-color:#6001d2;">
+                        🏈 Connect Yahoo Fantasy League
+                    </button>
+                    <div id="yahoo-status" class="status-message"></div>
+
+                    <p style="text-align:center; margin: 10px 0; font-size: 13px; color: #888;">— or upload a CSV —</p>
+
                     <div class="upload-area" id="upload-area">
                         <div class="upload-icon">📄</div>
                         <p>Drag and drop your league file here</p>
