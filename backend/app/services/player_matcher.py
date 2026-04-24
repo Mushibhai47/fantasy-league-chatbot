@@ -19,6 +19,7 @@ class PlayerMatcher:
         self._cbs_name_index: Dict[str, Player] = {}
         self._fantrax_id_index: Dict[str, Player] = {}
         self._nfbc_id_index: Dict[int, Player] = {}
+        self._yahoo_id_index: Dict[str, Player] = {}
 
     # ------------------------------------------------------------------
     # Cache management
@@ -38,6 +39,9 @@ class PlayerMatcher:
         self._nfbc_id_index = {
             p.nfbc_id: p for p in self._all_players if p.nfbc_id
         }
+        self._yahoo_id_index = {
+            p.yahoo_id: p for p in self._all_players if p.yahoo_id
+        }
 
     def _add_to_cache(self, player: Player):
         """Register a newly-created player in the ID indexes only.
@@ -53,6 +57,8 @@ class PlayerMatcher:
             self._fantrax_id_index[player.fantrax_id] = player
         if player.nfbc_id:
             self._nfbc_id_index[player.nfbc_id] = player
+        if player.yahoo_id:
+            self._yahoo_id_index[player.yahoo_id] = player
 
     # ------------------------------------------------------------------
     # ID lookups (in-memory after first call)
@@ -153,6 +159,12 @@ class PlayerMatcher:
         """
         Smart matching - try ID first, then fuzzy name.
         """
+        if player_data.get('yahoo_id'):
+            self._ensure_cache()
+            match = self._yahoo_id_index.get(player_data['yahoo_id'])
+            if match:
+                return match
+
         if player_data.get('fantrax_id'):
             match = self.match_by_fantrax_id(player_data['fantrax_id'])
             if match:
@@ -211,6 +223,9 @@ class PlayerMatcher:
 
         if player:
             # Update IDs / names if we have new ones
+            if player_data.get('yahoo_id') and not player.yahoo_id:
+                player.yahoo_id = player_data['yahoo_id']
+                self._yahoo_id_index[player.yahoo_id] = player
             if player_data.get('fantrax_id') and not player.fantrax_id:
                 player.fantrax_id = player_data['fantrax_id']
                 self._fantrax_id_index[player.fantrax_id] = player
@@ -237,6 +252,7 @@ class PlayerMatcher:
             fantrax_id=player_data.get('fantrax_id'),
             nfbc_id=player_data.get('nfbc_id'),
             cbs_player_name=player_data.get('cbs_player_name'),
+            yahoo_id=player_data.get('yahoo_id'),
         )
         self.db.add(new_player)
         self._add_to_cache(new_player)
