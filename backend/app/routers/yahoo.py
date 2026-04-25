@@ -236,12 +236,12 @@ async def import_yahoo_league(
     player_owner_pairs = []
 
     for player_data in players_data:
-        player = matcher.get_or_create_player(player_data)
-        player_owner_pairs.append((player, player_data))
         if player_data['owner'] == 'Free Agent':
             free_agent_count += 1
-        else:
-            owned_count += 1
+            continue  # Don't store free agents — saves 97% of DB space
+        player = matcher.get_or_create_player(player_data)
+        player_owner_pairs.append((player, player_data))
+        owned_count += 1
 
     db.flush()
 
