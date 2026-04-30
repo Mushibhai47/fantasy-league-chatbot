@@ -186,11 +186,12 @@ async def yahoo_callback(
     db: Session = Depends(get_db)
 ):
     """Handle Yahoo OAuth callback, exchange code for tokens, fetch roster."""
-    logger.info(f"Yahoo callback received, code={code[:10]}...")
+    print(f"[YAHOO] Callback received, code={code[:10]}...", flush=True)
     try:
         client_id, client_secret = _get_credentials()
+        print(f"[YAHOO] Credentials OK, client_id starts with: {client_id[:8]}...", flush=True)
     except Exception as e:
-        logger.error(f"Yahoo credentials error: {e}")
+        print(f"[YAHOO] Credentials error: {e}", flush=True)
         raise
 
     # Exchange code for tokens
@@ -198,37 +199,38 @@ async def yahoo_callback(
         token_data = _exchange_code_for_token(code, client_id, client_secret)
         access_token = token_data['access_token']
         refresh_token = token_data.get('refresh_token', '')
-        logger.info(f"Token exchange success, access_token={access_token[:20]}...")
+        print(f"[YAHOO] Token exchange SUCCESS, token starts: {access_token[:20]}...", flush=True)
     except Exception as e:
-        logger.error(f"Token exchange failed: {e}")
+        print(f"[YAHOO] Token exchange FAILED: {e}", flush=True)
         raise
 
     # Get user's MLB leagues — try all available MLB games to find league keys
     league_keys = []
     try:
         leagues_url = f"{YAHOO_API_BASE}/users;use_login=1/games;is_available=1;game_codes=mlb/leagues"
-        logger.info(f"Fetching Yahoo leagues: {leagues_url}")
+        print(f"[YAHOO] Fetching leagues: {leagues_url}", flush=True)
         xml_root = _yahoo_api_get(leagues_url, access_token)
         raw_xml = ET.tostring(xml_root, encoding='unicode')
-        logger.info(f"Yahoo leagues XML (first 1000 chars): {raw_xml[:1000]}")
+        print(f"[YAHOO] Leagues XML (first 2000 chars): {raw_xml[:2000]}", flush=True)
         for league_el in xml_root.iter('{http://fantasysports.yahooapis.com/fantasy/v2/base.rng}league_key'):
             league_keys.append(league_el.text)
-        logger.info(f"Found league keys: {league_keys}")
+        print(f"[YAHOO] Found league keys: {league_keys}", flush=True)
     except Exception as e:
-        logger.error(f"Yahoo leagues fetch error: {e}")
+        print(f"[YAHOO] Leagues fetch error: {e}", flush=True)
 
     # Fallback: try without is_available filter
     if not league_keys:
         try:
             leagues_url2 = f"{YAHOO_API_BASE}/users;use_login=1/games;game_codes=mlb/leagues"
-            logger.info(f"Fallback fetch: {leagues_url2}")
+            print(f"[YAHOO] Fallback fetch: {leagues_url2}", flush=True)
             xml_root2 = _yahoo_api_get(leagues_url2, access_token)
-            logger.info(f"Fallback XML: {ET.tostring(xml_root2, encoding='unicode')[:1000]}")
+            raw_xml2 = ET.tostring(xml_root2, encoding='unicode')
+            print(f"[YAHOO] Fallback XML (first 2000 chars): {raw_xml2[:2000]}", flush=True)
             for league_el in xml_root2.iter('{http://fantasysports.yahooapis.com/fantasy/v2/base.rng}league_key'):
                 league_keys.append(league_el.text)
-            logger.info(f"Fallback league keys: {league_keys}")
+            print(f"[YAHOO] Fallback league keys: {league_keys}", flush=True)
         except Exception as e:
-            logger.error(f"Yahoo fallback leagues fetch error: {e}")
+            print(f"[YAHOO] Fallback leagues fetch error: {e}", flush=True)
 
     # Redirect back to site with tokens and league keys in URL fragment
     # (frontend picks these up and stores them)
@@ -237,6 +239,7 @@ async def yahoo_callback(
     leagues_param = ','.join(league_keys)
 
     redirect_url = f"{frontend_url}?yahoo_token={token_param}&yahoo_leagues={leagues_param}"
+    print(f"[YAHOO] Redirecting to: {frontend_url}?yahoo_token=***&yahoo_leagues={leagues_param}", flush=True)
     return RedirectResponse(url=redirect_url)
 
 
