@@ -12,8 +12,11 @@ import requests
 import base64
 import uuid
 import xml.etree.ElementTree as ET
+import logging
 from datetime import datetime
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class ImportLeagueRequest(BaseModel):
@@ -190,25 +193,32 @@ async def yahoo_callback(
     access_token = token_data['access_token']
     refresh_token = token_data.get('refresh_token', '')
 
-    # Get user's MLB leagues — try current game ID, fall back to available games list
+    # Get user's MLB leagues — try all available MLB games to find league keys
     league_keys = []
     try:
-        leagues_url = f"{YAHOO_API_BASE}/users;use_login=1/games;game_keys={YAHOO_MLB_GAME_ID}/leagues"
+        leagues_url = f"{YAHOO_API_BASE}/users;use_login=1/games;is_available=1;game_codes=mlb/leagues"
+        logger.info(f"Fetching Yahoo leagues: {leagues_url}")
         xml_root = _yahoo_api_get(leagues_url, access_token)
+        raw_xml = ET.tostring(xml_root, encoding='unicode')
+        logger.info(f"Yahoo leagues XML (first 1000 chars): {raw_xml[:1000]}")
         for league_el in xml_root.iter('{http://fantasysports.yahooapis.com/fantasy/v2/base.rng}league_key'):
             league_keys.append(league_el.text)
-    except Exception:
-        pass
+        logger.info(f"Found league keys: {league_keys}")
+    except Exception as e:
+        logger.error(f"Yahoo leagues fetch error: {e}")
 
-    # If no leagues found with hardcoded game ID, try all available MLB games
+    # Fallback: try without is_available filter
     if not league_keys:
         try:
-            games_url = f"{YAHOO_API_BASE}/users;use_login=1/games;game_codes=mlb/leagues"
-            xml_root = _yahoo_api_get(games_url, access_token)
-            for league_el in xml_root.iter('{http://fantasysports.yahooapis.com/fantasy/v2/base.rng}league_key'):
+            leagues_url2 = f"{YAHOO_API_BASE}/users;use_login=1/games;game_codes=mlb/leagues"
+            logger.info(f"Fallback fetch: {leagues_url2}")
+            xml_root2 = _yahoo_api_get(leagues_url2, access_token)
+            logger.info(f"Fallback XML: {ET.tostring(xml_root2, encoding='unicode')[:1000]}")
+            for league_el in xml_root2.iter('{http://fantasysports.yahooapis.com/fantasy/v2/base.rng}league_key'):
                 league_keys.append(league_el.text)
-        except Exception:
-            pass
+            logger.info(f"Fallback league keys: {league_keys}")
+        except Exception as e:
+            logger.error(f"Yahoo fallback leagues fetch error: {e}")
 
     # Redirect back to site with tokens and league keys in URL fragment
     # (frontend picks these up and stores them)
