@@ -1,6 +1,7 @@
 """Yahoo Fantasy Sports OAuth Router"""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse, JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, League, Roster
@@ -13,6 +14,13 @@ import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from typing import Optional
+
+
+class ImportLeagueRequest(BaseModel):
+    league_key: str
+    access_token: str
+    refresh_token: str
+    existing_league_id: Optional[str] = None
 
 router = APIRouter()
 settings = get_settings()
@@ -214,14 +222,15 @@ async def yahoo_callback(
 
 @router.post("/import-league")
 async def import_yahoo_league(
-    league_key: str,
-    access_token: str,
-    refresh_token: str,
-    existing_league_id: Optional[str] = None,
+    req: ImportLeagueRequest,
     db: Session = Depends(get_db)
 ):
     """Fetch roster from Yahoo Fantasy API and store in DB."""
     client_id, client_secret = _get_credentials()
+    league_key = req.league_key
+    access_token = req.access_token
+    refresh_token = req.refresh_token
+    existing_league_id = req.existing_league_id
 
     # Fetch all teams' rosters in one call — gives us team names per player
     roster_url = f"{YAHOO_API_BASE}/league/{league_key}/teams/roster"
