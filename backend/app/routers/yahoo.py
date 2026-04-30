@@ -186,12 +186,22 @@ async def yahoo_callback(
     db: Session = Depends(get_db)
 ):
     """Handle Yahoo OAuth callback, exchange code for tokens, fetch roster."""
-    client_id, client_secret = _get_credentials()
+    logger.info(f"Yahoo callback received, code={code[:10]}...")
+    try:
+        client_id, client_secret = _get_credentials()
+    except Exception as e:
+        logger.error(f"Yahoo credentials error: {e}")
+        raise
 
     # Exchange code for tokens
-    token_data = _exchange_code_for_token(code, client_id, client_secret)
-    access_token = token_data['access_token']
-    refresh_token = token_data.get('refresh_token', '')
+    try:
+        token_data = _exchange_code_for_token(code, client_id, client_secret)
+        access_token = token_data['access_token']
+        refresh_token = token_data.get('refresh_token', '')
+        logger.info(f"Token exchange success, access_token={access_token[:20]}...")
+    except Exception as e:
+        logger.error(f"Token exchange failed: {e}")
+        raise
 
     # Get user's MLB leagues — try all available MLB games to find league keys
     league_keys = []
