@@ -20,7 +20,7 @@ settings = get_settings()
 YAHOO_AUTH_URL = "https://api.login.yahoo.com/oauth2/request_auth"
 YAHOO_TOKEN_URL = "https://api.login.yahoo.com/oauth2/get_token"
 YAHOO_API_BASE = "https://fantasysports.yahooapis.com/fantasy/v2"
-YAHOO_MLB_GAME_ID = "422"  # 2026 MLB season game ID
+YAHOO_MLB_GAME_ID = "458"  # 2026 MLB season game ID (auto-detected; update if wrong)
 
 
 def _get_credentials():
@@ -90,6 +90,37 @@ def _yahoo_api_get(url: str, access_token: str) -> ET.Element:
     return root
 
 
+def _parse_yahoo_teams_roster(xml_root: ET.Element) -> list:
+    """Parse Yahoo Fantasy teams/roster XML — gives us actual team names per player."""
+    NS = 'http://fantasysports.yahooapis.com/fantasy/v2/base.rng'
+    players = []
+
+    for team_el in xml_root.iter(f'{{{NS}}}team'):
+        team_name_el = team_el.find(f'{{{NS}}}name')
+        team_name = team_name_el.text.strip() if team_name_el is not None else 'Unknown'
+
+        roster_el = team_el.find(f'.//{{{NS}}}roster')
+        if roster_el is None:
+            continue
+
+        for player_el in roster_el.iter(f'{{{NS}}}player'):
+            name_el = player_el.find(f'.//{{{NS}}}full')
+            team_el2 = player_el.find(f'.//{{{NS}}}editorial_team_abbr')
+            pos_el = player_el.find(f'.//{{{NS}}}display_position')
+            yahoo_id_el = player_el.find(f'{{{NS}}}player_id')
+
+            players.append({
+                'yahoo_id': yahoo_id_el.text if yahoo_id_el is not None else '',
+                'name': name_el.text if name_el is not None else '',
+                'mlb_team': team_el2.text.upper() if team_el2 is not None else '',
+                'position': pos_el.text if pos_el is not None else '',
+                'owner': team_name,
+                'league_type': 'yahoo',
+            })
+
+    return players
+
+
 def _parse_yahoo_roster(xml_root: ET.Element) -> list:
     """Parse Yahoo Fantasy roster XML into list of player dicts."""
     ns = {'y': 'http://fantasysports.yahooapis.com/fantasy/v2/base.rng'}
@@ -151,15 +182,25 @@ async def yahoo_callback(
     access_token = token_data['access_token']
     refresh_token = token_data.get('refresh_token', '')
 
-    # Get user's leagues
-    leagues_url = f"{YAHOO_API_BASE}/users;use_login=1/games;game_keys={YAHOO_MLB_GAME_ID}/leagues"
+    # Get user's MLB leagues — try current game ID, fall back to available games list
+    league_keys = []
     try:
+        leagues_url = f"{YAHOO_API_BASE}/users;use_login=1/games;game_keys={YAHOO_MLB_GAME_ID}/leagues"
         xml_root = _yahoo_api_get(leagues_url, access_token)
-        league_keys = []
         for league_el in xml_root.iter('{http://fantasysports.yahooapis.com/fantasy/v2/base.rng}league_key'):
             league_keys.append(league_el.text)
     except Exception:
-        league_keys = []
+        pass
+
+    # If no leagues found with hardcoded game ID, try all available MLB games
+    if not league_keys:
+        try:
+            games_url = f"{YAHOO_API_BASE}/users;use_login=1/games;game_codes=mlb/leagues"
+            xml_root = _yahoo_api_get(games_url, access_token)
+            for league_el in xml_root.iter('{http://fantasysports.yahooapis.com/fantasy/v2/base.rng}league_key'):
+                league_keys.append(league_el.text)
+        except Exception:
+            pass
 
     # Redirect back to site with tokens and league keys in URL fragment
     # (frontend picks these up and stores them)
@@ -182,13 +223,12 @@ async def import_yahoo_league(
     """Fetch roster from Yahoo Fantasy API and store in DB."""
     client_id, client_secret = _get_credentials()
 
-    # Try fetching roster, refresh token if expired
-    roster_url = f"{YAHOO_API_BASE}/league/{league_key}/players;status=T"
+    # Fetch all teams' rosters in one call — gives us team names per player
+    roster_url = f"{YAHOO_API_BASE}/league/{league_key}/teams/roster"
     try:
         xml_root = _yahoo_api_get(roster_url, access_token)
     except HTTPException as e:
         if e.status_code == 401:
-            # Token expired, refresh it
             token_data = _refresh_access_token(refresh_token, client_id, client_secret)
             access_token = token_data['access_token']
             refresh_token = token_data.get('refresh_token', refresh_token)
@@ -196,7 +236,7 @@ async def import_yahoo_league(
         else:
             raise
 
-    players_data = _parse_yahoo_roster(xml_root)
+    players_data = _parse_yahoo_teams_roster(xml_root)
     if not players_data:
         raise HTTPException(status_code=404, detail="No players found in Yahoo league")
 

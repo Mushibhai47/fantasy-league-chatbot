@@ -171,6 +171,7 @@ async def chat(
 
         nfbc_lookup = {}  # NFBCID -> full projection data string
         fantrax_lookup = {}  # FantraxID -> full projection data string
+        yahoo_lookup = {}  # YahooID -> full projection data string
         cbs_name_lookup = {}  # normalized CBSSportsName -> full projection data string
         name_lookup = {}  # name -> full projection data string
         proj_pos_lookup = {}  # NFBCID/FantraxID -> Pos from projection data (for display)
@@ -260,6 +261,11 @@ async def chat(
                             if fantrax_id and str(fantrax_id) not in ('nan', 'None', ''):
                                 fantrax_lookup[str(fantrax_id)] = dollar_str
 
+                            # Store by YahooID
+                            yahoo_id = str(row.get('YahooID', '')).strip()
+                            if yahoo_id and yahoo_id not in ('nan', 'None', ''):
+                                yahoo_lookup[yahoo_id] = dollar_str
+
                             # Store by normalized CBSSportsName (most reliable for CBS leagues)
                             cbs_sn = str(row.get('CBSSportsName', ''))
                             if cbs_sn and cbs_sn not in ('nan', 'None', ''):
@@ -316,6 +322,12 @@ async def chat(
 
         def get_player_dollar_value(player_name: str, player_obj=None) -> str:
             """Get dollar value using NFBCID/FantraxID first, then name fallback"""
+            # Try YahooID first for Yahoo leagues
+            if player_obj and player_obj.yahoo_id:
+                val = yahoo_lookup.get(str(player_obj.yahoo_id), '')
+                if val:
+                    return f" [{val}]"
+
             # Try NFBCID first (most reliable for NFBC CSVs)
             if player_obj and player_obj.nfbc_id:
                 val = nfbc_lookup.get(str(player_obj.nfbc_id), '')
@@ -366,6 +378,8 @@ async def chat(
                 return 'FantraxID'
             elif league.league_type == 'cbs' and 'CBSSportsName' in df.columns:
                 return 'CBSSportsName'
+            elif league.league_type == 'yahoo' and 'YahooID' in df.columns:
+                return 'YahooID'
             elif 'NFBCID' in df.columns:
                 return 'NFBCID'
             return 'NFBCID'
