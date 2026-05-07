@@ -175,6 +175,7 @@ async def chat(
         cbs_name_lookup = {}  # normalized CBSSportsName -> full projection data string
         name_lookup = {}  # name -> full projection data string
         proj_pos_lookup = {}  # NFBCID/FantraxID -> Pos from projection data (for display)
+        filtered_df = pd.DataFrame()  # Always defined; overwritten below if projections loaded
 
         if _projections_df is not None:
             try:
@@ -2428,5 +2429,7 @@ async def chat(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        print(f"[CHAT ERROR] {str(e)}\n{traceback.format_exc()}", flush=True)
         logger.error(f"Error in chat endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
