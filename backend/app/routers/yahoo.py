@@ -15,6 +15,7 @@ import xml.etree.ElementTree as ET
 import logging
 from datetime import datetime
 from typing import Optional
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +239,7 @@ async def yahoo_callback(
     token_param = base64.b64encode(f"{access_token}:{refresh_token}".encode()).decode()
     leagues_param = ','.join(league_keys)
 
-    redirect_url = f"{frontend_url}?yahoo_token={token_param}&yahoo_leagues={leagues_param}"
+    redirect_url = f"{frontend_url}?yahoo_token={quote(token_param, safe='')}&yahoo_leagues={leagues_param}"
     print(f"[YAHOO] Redirecting to: {frontend_url}?yahoo_token=***&yahoo_leagues={leagues_param}", flush=True)
     return RedirectResponse(url=redirect_url)
 
