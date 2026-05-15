@@ -44,6 +44,7 @@ async def upload_csv(
         players_data, league_type = parser.parse_csv(tmp_file_path)
 
         # If re-uploading, delete old rosters and league to prevent accumulation
+        user = None
         if existing_league_id:
             try:
                 old_league_uuid = uuid.UUID(existing_league_id)
