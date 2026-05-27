@@ -81,15 +81,9 @@ function razzball_chatbot_shortcode() {
 
                 <div class="setup-step" id="step-upload">
                     <h2>Load Your League</h2>
-                    <p class="step-description">Connect your Yahoo league or upload a CSV from Fantrax, CBS, or NFBC</p>
+                    <p class="step-description">Upload a CSV from Fantrax, CBS, or NFBC — or connect your Yahoo league via Settings ⚙️</p>
 
-                    <!-- Yahoo Connect Button -->
-                    <button id="yahoo-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:10px; background:#6001d2; border-color:#6001d2;">
-                        🏈 Connect Yahoo Fantasy League
-                    </button>
                     <div id="yahoo-status" class="status-message"></div>
-
-                    <p style="text-align:center; margin: 10px 0; font-size: 13px; color: #888;">— or upload a CSV —</p>
 
                     <div class="upload-area" id="upload-area">
                         <div class="upload-icon">📄</div>
@@ -211,8 +205,18 @@ function razzball_chatbot_shortcode() {
                     </div>
                     <div class="setting-item">
                         <label>League Data</label>
-                        <button id="reupload-btn" class="btn btn-secondary">Upload New CSV</button>
-                        <p class="setting-description">Upload a new league file to update your roster</p>
+                        <button id="yahoo-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#6001d2; border-color:#6001d2;" onclick="window.location.href='https://valiant-healing-production-ce05.up.railway.app/api/yahoo/auth'">⚾ Connect Yahoo Fantasy League</button>
+                        <div id="yahoo-status" class="status-message"></div>
+                        <div style="margin-top:12px; padding-top:12px; border-top:1px solid #eee;">
+                            <label style="font-weight:600; display:block; margin-bottom:6px;">Connect ESPN Fantasy League</label>
+                            <input type="text" id="espn-league-id" placeholder="ESPN League ID (numbers only)" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
+                            <input type="text" id="espn-s2" placeholder="espn_s2 cookie value" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
+                            <input type="text" id="espn-swid" placeholder="SWID cookie value {with-curly-braces}" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
+                            <button id="espn-connect-btn" class="btn btn-primary" style="width:100%; background:#cc0000; border-color:#cc0000;">⚾ Connect ESPN League</button>
+                            <div id="espn-status" class="status-message"></div>
+                        </div>
+                        <button id="reupload-btn" class="btn btn-secondary" style="width:100%; margin-top:12px;">Upload New CSV</button>
+                        <p class="setting-description">Connect your Yahoo or ESPN league, or upload a CSV from Fantrax, CBS, or NFBC</p>
                     </div>
                     <div class="setting-item">
                         <button id="clear-data-btn" class="btn btn-danger">Clear All Data</button>

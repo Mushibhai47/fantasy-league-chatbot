@@ -67,6 +67,7 @@ function setupEventListeners() {
         showSetupScreen('upload');
     });
     document.getElementById('yahoo-connect-btn')?.addEventListener('click', handleYahooConnect);
+    document.getElementById('espn-connect-btn')?.addEventListener('click', handleESPNImport);
     document.getElementById('browse-btn').addEventListener('click', () => {
         document.getElementById('file-input').click();
     });
@@ -504,6 +505,68 @@ async function handleYahooCallback() {
     } catch (error) {
         console.error('Yahoo import error:', error);
         showStatus(statusEl, `Failed to import Yahoo league: ${error.message}`, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ESPN Fantasy
+async function handleESPNImport() {
+    const leagueId = document.getElementById('espn-league-id')?.value?.trim();
+    const espnS2 = document.getElementById('espn-s2')?.value?.trim();
+    const swid = document.getElementById('espn-swid')?.value?.trim();
+    const statusEl = document.getElementById('espn-status');
+
+    if (!leagueId || !espnS2 || !swid) {
+        if (statusEl) showStatus(statusEl, 'Please fill in all three ESPN fields.', 'error');
+        return;
+    }
+
+    if (statusEl) showStatus(statusEl, 'Importing ESPN league...', 'info');
+    showLoading(true);
+    closeSettings();
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/espn/import-league`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                league_id: leagueId,
+                espn_s2: espnS2,
+                swid: swid,
+                existing_league_id: state.leagueId || null
+            })
+        });
+
+        if (!response.ok) {
+            let errMsg = 'Import failed';
+            try { const e = await response.json(); errMsg = e.detail || errMsg; } catch {}
+            throw new Error(errMsg);
+        }
+
+        const data = await response.json();
+        state.leagueId = data.id;
+        state.selectedTeam = null;
+        localStorage.setItem('razzball_league_id', data.id);
+        localStorage.removeItem('razzball_selected_team');
+
+        const uploadStatusEl = document.getElementById('upload-status');
+        if (uploadStatusEl) showStatus(uploadStatusEl, `✅ ESPN league loaded! ${data.owned_players} players across ${data.teams.length} teams.`, 'success');
+
+        if (data.teams && data.teams.length > 0) {
+            populateTeamSelector(data.teams);
+        }
+
+        setTimeout(() => {
+            showSetupScreen('ready');
+            const ltSelector = document.getElementById('league-type-selector');
+            if (ltSelector) ltSelector.value = state.selectedLeagueType;
+        }, 1500);
+
+    } catch (error) {
+        console.error('ESPN import error:', error);
+        const uploadStatusEl = document.getElementById('upload-status');
+        if (uploadStatusEl) showStatus(uploadStatusEl, `Failed to import ESPN league: ${error.message}`, 'error');
     } finally {
         showLoading(false);
     }
