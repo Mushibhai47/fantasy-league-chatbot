@@ -362,13 +362,15 @@ async def chat(
         # PLATFORM-AWARE MATCHING HELPERS
         # ============================================================
         def get_player_id_for_col(player_obj, id_col: str) -> str:
-            """Return the player's ID value for the given id_col (NFBCID / FantraxID / CBSSportsName)."""
+            """Return the player's ID value for the given id_col (NFBCID / FantraxID / CBSSportsName / YahooID)."""
             if id_col == 'FantraxID':
                 return str(player_obj.fantrax_id) if player_obj.fantrax_id else ''
             elif id_col == 'CBSSportsName':
                 # Normalize so CHW→CWS, Jr. stripped, position removed — matches API format
                 raw = str(player_obj.cbs_player_name) if player_obj.cbs_player_name else ''
                 return _normalize_cbs_name(raw) if raw else ''
+            elif id_col == 'YahooID':
+                return str(player_obj.yahoo_id) if player_obj.yahoo_id else ''
             else:  # NFBCID (default)
                 return str(player_obj.nfbc_id) if player_obj.nfbc_id else ''
 
@@ -391,6 +393,8 @@ async def chat(
                 return ('FantraxID', str(player_obj.fantrax_id))
             elif league.league_type == 'cbs' and player_obj.cbs_player_name:
                 return ('CBSSportsName', str(player_obj.cbs_player_name))
+            elif league.league_type == 'yahoo' and player_obj.yahoo_id:
+                return ('YahooID', str(player_obj.yahoo_id))
             elif player_obj.nfbc_id:
                 return ('NFBCID', str(player_obj.nfbc_id))
             elif player_obj.fantrax_id:
