@@ -81,9 +81,22 @@ function razzball_chatbot_shortcode() {
 
                 <div class="setup-step" id="step-upload">
                     <h2>Load Your League</h2>
-                    <p class="step-description">Upload a CSV from Fantrax, CBS, or NFBC — or connect your Yahoo league via Settings ⚙️</p>
+                    <p class="step-description">Connect your Yahoo or ESPN league, or upload a CSV from Fantrax, CBS, or NFBC</p>
 
                     <div id="yahoo-status" class="status-message"></div>
+
+                    <button id="yahoo-connect-btn-upload" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#6001d2; border-color:#6001d2;" onclick="window.location.href='https://valiant-healing-production-ce05.up.railway.app/api/yahoo/auth'">⚾ Connect Yahoo Fantasy League</button>
+
+                    <div style="margin-bottom:12px; padding:12px; border:1px solid #eee; border-radius:6px; background:#fafafa;">
+                        <label style="font-weight:600; display:block; margin-bottom:6px; font-size:13px;">Connect ESPN Fantasy League</label>
+                        <input type="text" id="espn-league-id-upload" placeholder="ESPN League ID (numbers only)" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
+                        <input type="text" id="espn-s2-upload" placeholder="espn_s2 cookie value" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
+                        <input type="text" id="espn-swid-upload" placeholder="SWID cookie value {with-curly-braces}" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
+                        <button id="espn-connect-btn-upload" class="btn btn-primary" style="width:100%; background:#cc0000; border-color:#cc0000;">⚾ Connect ESPN League</button>
+                        <div id="espn-status-upload" class="status-message"></div>
+                    </div>
+
+                    <p style="text-align:center; font-size:13px; color:#888; margin:8px 0;">or upload a CSV</p>
 
                     <div class="upload-area" id="upload-area">
                         <div class="upload-icon">📄</div>

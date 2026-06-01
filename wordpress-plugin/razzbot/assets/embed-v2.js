@@ -68,6 +68,7 @@ function setupEventListeners() {
     });
     document.getElementById('yahoo-connect-btn')?.addEventListener('click', handleYahooConnect);
     document.getElementById('espn-connect-btn')?.addEventListener('click', handleESPNImport);
+    document.getElementById('espn-connect-btn-upload')?.addEventListener('click', handleESPNImportFromUploadScreen);
     document.getElementById('browse-btn').addEventListener('click', () => {
         document.getElementById('file-input').click();
     });
@@ -511,12 +512,24 @@ async function handleYahooCallback() {
 }
 
 // ESPN Fantasy
+async function handleESPNImportFromUploadScreen() {
+    const leagueId = document.getElementById('espn-league-id-upload')?.value?.trim();
+    const espnS2 = document.getElementById('espn-s2-upload')?.value?.trim();
+    const swid = document.getElementById('espn-swid-upload')?.value?.trim();
+    const statusEl = document.getElementById('espn-status-upload');
+    await _doESPNImport(leagueId, espnS2, swid, statusEl);
+}
+
 async function handleESPNImport() {
     const leagueId = document.getElementById('espn-league-id')?.value?.trim();
     const espnS2 = document.getElementById('espn-s2')?.value?.trim();
     const swid = document.getElementById('espn-swid')?.value?.trim();
     const statusEl = document.getElementById('espn-status');
+    closeSettings();
+    await _doESPNImport(leagueId, espnS2, swid, statusEl);
+}
 
+async function _doESPNImport(leagueId, espnS2, swid, statusEl) {
     if (!leagueId || !espnS2 || !swid) {
         if (statusEl) showStatus(statusEl, 'Please fill in all three ESPN fields.', 'error');
         return;
@@ -524,7 +537,6 @@ async function handleESPNImport() {
 
     if (statusEl) showStatus(statusEl, 'Importing ESPN league...', 'info');
     showLoading(true);
-    closeSettings();
 
     try {
         const response = await fetch(`${API_BASE_URL}/espn/import-league`, {
@@ -565,8 +577,9 @@ async function handleESPNImport() {
 
     } catch (error) {
         console.error('ESPN import error:', error);
+        if (statusEl) showStatus(statusEl, `Failed to import ESPN league: ${error.message}`, 'error');
         const uploadStatusEl = document.getElementById('upload-status');
-        if (uploadStatusEl) showStatus(uploadStatusEl, `Failed to import ESPN league: ${error.message}`, 'error');
+        if (uploadStatusEl && statusEl !== uploadStatusEl) showStatus(uploadStatusEl, `Failed to import ESPN league: ${error.message}`, 'error');
     } finally {
         showLoading(false);
     }
