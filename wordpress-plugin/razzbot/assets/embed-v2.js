@@ -525,7 +525,8 @@ async function handleESPNImport() {
     const espnS2 = document.getElementById('espn-s2')?.value?.trim();
     const swid = document.getElementById('espn-swid')?.value?.trim();
     const statusEl = document.getElementById('espn-status');
-    closeSettings();
+    console.log('[ESPN] handleESPNImport called, leagueId=', leagueId, 'hasS2=', !!espnS2, 'hasSWID=', !!swid);
+    // Don't close settings yet — keep it open so errors are visible
     await _doESPNImport(leagueId, espnS2, swid, statusEl);
 }
 
