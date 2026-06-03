@@ -929,4 +929,9 @@ window.RazzballChatbot = {
     }
 };
 
+// Expose ESPN/Yahoo handlers to global scope for inline onclick attributes
+window.handleESPNImport = handleESPNImport;
+window.handleESPNImportFromUploadScreen = handleESPNImportFromUploadScreen;
+window.handleYahooConnect = handleYahooConnect;
+
 console.log('Razzbot loaded successfully');
