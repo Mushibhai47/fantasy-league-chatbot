@@ -538,18 +538,29 @@ async function _doESPNImport(leagueId, espnS2, swid, statusEl) {
 
     if (statusEl) showStatus(statusEl, 'Importing ESPN league...', 'info');
     showLoading(true);
+    console.log('[ESPN] Starting import request to', `${API_BASE_URL}/espn/import-league`);
 
     try {
-        const response = await fetch(`${API_BASE_URL}/espn/import-league`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                league_id: leagueId,
-                espn_s2: espnS2,
-                swid: swid,
-                existing_league_id: state.leagueId || null
-            })
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 35000);
+
+        let response;
+        try {
+            response = await fetch(`${API_BASE_URL}/espn/import-league`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    league_id: leagueId,
+                    espn_s2: espnS2,
+                    swid: swid,
+                    existing_league_id: state.leagueId || null
+                }),
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timeoutId);
+        }
+        console.log('[ESPN] Got response, status=', response.status);
 
         if (!response.ok) {
             let errMsg = 'Import failed';
@@ -577,10 +588,14 @@ async function _doESPNImport(leagueId, espnS2, swid, statusEl) {
         }, 1500);
 
     } catch (error) {
-        console.error('ESPN import error:', error);
-        if (statusEl) showStatus(statusEl, `Failed to import ESPN league: ${error.message}`, 'error');
+        console.error('[ESPN] Import error:', error);
+        let msg = error.message;
+        if (error.name === 'AbortError') {
+            msg = 'Request timed out after 35 seconds. ESPN may be blocking the server — try again or contact support.';
+        }
+        if (statusEl) showStatus(statusEl, `ESPN import failed: ${msg}`, 'error');
         const uploadStatusEl = document.getElementById('upload-status');
-        if (uploadStatusEl && statusEl !== uploadStatusEl) showStatus(uploadStatusEl, `Failed to import ESPN league: ${error.message}`, 'error');
+        if (uploadStatusEl && statusEl !== uploadStatusEl) showStatus(uploadStatusEl, `ESPN import failed: ${msg}`, 'error');
     } finally {
         showLoading(false);
     }

@@ -43,19 +43,32 @@ class ESPNImportRequest(BaseModel):
 
 def _fetch_espn_league(league_id: str, espn_s2: str, swid: str, season: str) -> dict:
     url = f"{ESPN_API_BASE}/seasons/{season}/segments/0/leagues/{league_id}"
-    resp = requests.get(
-        url,
-        params={"view": ["mRoster", "mTeam", "mSettings"]},
-        cookies={"espn_s2": espn_s2, "SWID": swid},
-        headers={"Accept": "application/json"},
-        timeout=30
-    )
+    print(f"[ESPN] Fetching: {url}")
+    try:
+        resp = requests.get(
+            url,
+            params={"view": ["mRoster", "mTeam", "mSettings"]},
+            cookies={"espn_s2": espn_s2, "SWID": swid},
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            },
+            timeout=30
+        )
+    except requests.exceptions.Timeout:
+        print(f"[ESPN] Request timed out after 30s")
+        raise HTTPException(status_code=504, detail="ESPN API timed out. The league may be private or ESPN is blocking this request.")
+    except requests.exceptions.ConnectionError as e:
+        print(f"[ESPN] Connection error: {e}")
+        raise HTTPException(status_code=502, detail=f"Could not connect to ESPN API: {str(e)[:200]}")
+    print(f"[ESPN] Response status: {resp.status_code}, content length: {len(resp.text)}")
     if resp.status_code == 401:
         raise HTTPException(status_code=401, detail="ESPN authentication failed. Check your espn_s2 and SWID cookies.")
     if resp.status_code == 404:
         raise HTTPException(status_code=404, detail="ESPN league not found. Check your league ID.")
     if not resp.ok:
-        raise HTTPException(status_code=400, detail=f"ESPN API error: {resp.status_code} - {resp.text[:200]}")
+        print(f"[ESPN] Error body: {resp.text[:500]}")
+        raise HTTPException(status_code=400, detail=f"ESPN API error: {resp.status_code} - {resp.text[:300]}")
     return resp.json()
 
 
