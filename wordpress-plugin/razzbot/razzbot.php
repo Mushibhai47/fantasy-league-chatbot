@@ -89,9 +89,8 @@ function razzball_chatbot_shortcode() {
 
                     <div style="margin-bottom:12px; padding:12px; border:1px solid #eee; border-radius:6px; background:#fafafa;">
                         <label style="font-weight:600; display:block; margin-bottom:6px; font-size:13px;">Connect ESPN Fantasy League</label>
+                        <p style="font-size:12px; color:#666; margin:0 0 8px;">Make sure you are logged into <a href="https://espn.com" target="_blank">espn.com</a> in this browser first.</p>
                         <input type="text" id="espn-league-id-upload" placeholder="ESPN League ID (numbers only)" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
-                        <input type="text" id="espn-s2-upload" placeholder="espn_s2 cookie value" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
-                        <input type="text" id="espn-swid-upload" placeholder="SWID cookie value {with-curly-braces}" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
                         <button id="espn-connect-btn-upload" class="btn btn-primary" style="width:100%; background:#cc0000; border-color:#cc0000;" onclick="handleESPNImportFromUploadScreen()">⚾ Connect ESPN League</button>
                         <div id="espn-status-upload" class="status-message"></div>
                     </div>
@@ -222,9 +221,8 @@ function razzball_chatbot_shortcode() {
                         <div id="yahoo-status" class="status-message"></div>
                         <div style="margin-top:12px; padding-top:12px; border-top:1px solid #eee;">
                             <label style="font-weight:600; display:block; margin-bottom:6px;">Connect ESPN Fantasy League</label>
+                            <p style="font-size:12px; color:#666; margin:0 0 8px;">Make sure you are logged into <a href="https://espn.com" target="_blank">espn.com</a> in this browser first.</p>
                             <input type="text" id="espn-league-id" placeholder="ESPN League ID (numbers only)" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
-                            <input type="text" id="espn-s2" placeholder="espn_s2 cookie value" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
-                            <input type="text" id="espn-swid" placeholder="SWID cookie value {with-curly-braces}" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
                             <button id="espn-connect-btn" class="btn btn-primary" style="width:100%; background:#cc0000; border-color:#cc0000;" onclick="handleESPNImport()">⚾ Connect ESPN League</button>
                             <div id="espn-status" class="status-message" style="margin-top:6px;"></div>
                         </div>

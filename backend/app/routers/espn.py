@@ -8,7 +8,7 @@ from app.services.player_matcher import PlayerMatcher
 import requests
 import uuid
 import logging
-from typing import Optional
+from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -169,3 +169,94 @@ async def import_espn_league(req: ESPNImportRequest, db: Session = Depends(get_d
         "teams": team_owners,
         "league_name": league_name
     }
+
+
+class ESPNPlayerEntry(BaseModel):
+    name: str
+    team: str
+    position: str
+    owner: str
+    status: Optional[str] = None
+
+
+class ESPNParsedImportRequest(BaseModel):
+    players: List[ESPNPlayerEntry]
+    league_name: Optional[str] = None
+    espn_league_id: Optional[str] = None
+    existing_league_id: Optional[str] = None
+
+
+def _save_espn_players(players_data: list, league_name: str, espn_league_id: str, existing_league_id: Optional[str], db: Session) -> dict:
+    """Shared logic: given a list of player dicts, create/replace league in DB."""
+    user = None
+    if existing_league_id:
+        try:
+            old_uuid = uuid.UUID(existing_league_id)
+            old_league = db.query(League).filter(League.id == old_uuid).first()
+            if old_league:
+                db.query(Roster).filter(Roster.league_id == old_uuid).delete()
+                user = db.query(User).filter(User.id == old_league.user_id).first()
+                db.delete(old_league)
+                db.flush()
+        except Exception:
+            pass
+
+    if not user:
+        user = User()
+        db.add(user)
+        db.flush()
+
+    league = League(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        league_type="espn",
+        csv_filename=f"espn_{espn_league_id or 'unknown'}"
+    )
+    db.add(league)
+    db.flush()
+
+    matcher = PlayerMatcher(db)
+    roster_entries = []
+    for pd in players_data:
+        player = matcher.get_or_create_player(pd)
+        roster_entries.append((player, pd))
+    db.flush()
+
+    for player, pd in roster_entries:
+        db.add(Roster(
+            league_id=league.id,
+            player_id=player.id,
+            team_owner=pd["owner"],
+            status=pd.get("status")
+        ))
+
+    db.commit()
+    team_owners = sorted(set(pd["owner"] for pd in players_data))
+    return {
+        "id": str(league.id),
+        "league_type": "espn",
+        "total_players": len(players_data),
+        "owned_players": len(players_data),
+        "free_agents": 0,
+        "teams": team_owners,
+        "league_name": league_name or f"ESPN League {espn_league_id}"
+    }
+
+
+@router.post("/import-parsed")
+async def import_espn_parsed(req: ESPNParsedImportRequest, db: Session = Depends(get_db)):
+    """Accept pre-parsed ESPN roster data from the browser and store in DB.
+    Used when the browser fetches ESPN directly (bypasses server IP blocks)."""
+    players_data = [p.dict() for p in req.players]
+    print(f"[ESPN] import-parsed: {len(players_data)} players, league='{req.league_name}'")
+    if not players_data:
+        raise HTTPException(status_code=400, detail="No player data received.")
+    result = _save_espn_players(
+        players_data,
+        req.league_name or "",
+        req.espn_league_id or "",
+        req.existing_league_id,
+        db
+    )
+    print(f"[ESPN] Saved parsed import: {result['total_players']} players, league_id={result['id']}")
+    return result
