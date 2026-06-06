@@ -53,6 +53,7 @@ function razzbot_conditional_enqueue() {
 
 add_shortcode( 'razzball_chatbot', 'razzball_chatbot_shortcode' );
 function razzball_chatbot_shortcode() {
+    $bookmarklet = "javascript:(function(){var P={1:'C',2:'1B',3:'2B',4:'3B',5:'SS',6:'OF',7:'DH',8:'SP',9:'RP'};var T={1:'ATL',2:'BOS',3:'LAA',4:'CWS',5:'CLE',6:'COL',7:'DET',8:'HOU',9:'KC',10:'MIL',11:'MIN',12:'NYM',13:'NYY',14:'OAK',15:'PHI',16:'PIT',17:'STL',18:'SD',19:'SF',20:'SEA',21:'TB',22:'TEX',23:'TOR',24:'WSH',25:'ATH',26:'CIN',27:'LAD',28:'ARI',29:'CHC',30:'MIA'};var m=location.href.match(/leagueId=(\d+)/);if(!m){alert('Go to your ESPN Fantasy Baseball league page first, then click this bookmark.');return;}var lid=m[1];fetch('https://fantasy.espn.com/apis/v3/games/flb/seasons/2026/segments/0/leagues/'+lid+'?view=mRoster&view=mTeam&view=mSettings',{credentials:'include',headers:{Accept:'application/json'}}).then(function(r){if(!r.ok)throw new Error('ESPN error '+r.status+'. Are you logged into ESPN?');return r.json();}).then(function(d){var nm={};(d.teams||[]).forEach(function(t){nm[t.id]=(t.name||t.abbrev||'Team '+t.id).trim();});var pl=[];(d.teams||[]).forEach(function(t){(t.roster&&t.roster.entries||[]).forEach(function(e){var p=(e.playerPoolEntry&&e.playerPoolEntry.player)||{};var n=(p.fullName||'').trim();if(!n)return;pl.push({name:n,team:T[p.proTeamId]||'',position:P[p.defaultPositionId]||'UTIL',owner:nm[t.id],status:e.lineupSlotId===17?'IL':null});});});return fetch('https://valiant-healing-production-ce05.up.railway.app/api/espn/import-parsed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({players:pl,league_name:(d.settings&&d.settings.name)||'',espn_league_id:lid})});}).then(function(r){if(!r.ok)throw new Error('Save failed: '+r.status);return r.json();}).then(function(res){location.href='https://razzball.com/rotodeluxe/?espn_league='+res.id;}).catch(function(e){alert('Razzbot ESPN: '+e.message);});})();";
     ob_start();
     ?>
     <div id="razzball-chatbot-embed">
@@ -87,12 +88,22 @@ function razzball_chatbot_shortcode() {
 
                     <button id="yahoo-connect-btn-upload" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#6001d2; border-color:#6001d2;" onclick="window.location.href='https://valiant-healing-production-ce05.up.railway.app/api/yahoo/auth'">⚾ Connect Yahoo Fantasy League</button>
 
+                    <?php /* ESPN bookmarklet UI — $bookmarklet defined at top of function */ ?>
                     <div style="margin-bottom:12px; padding:12px; border:1px solid #eee; border-radius:6px; background:#fafafa;">
-                        <label style="font-weight:600; display:block; margin-bottom:6px; font-size:13px;">Connect ESPN Fantasy League</label>
-                        <p style="font-size:12px; color:#666; margin:0 0 8px;">Make sure you are logged into <a href="https://espn.com" target="_blank">espn.com</a> in this browser first.</p>
-                        <input type="text" id="espn-league-id-upload" placeholder="ESPN League ID (numbers only)" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
-                        <button id="espn-connect-btn-upload" class="btn btn-primary" style="width:100%; background:#cc0000; border-color:#cc0000;" onclick="handleESPNImportFromUploadScreen()">⚾ Connect ESPN League</button>
-                        <div id="espn-status-upload" class="status-message"></div>
+                        <label style="font-weight:600; display:block; margin-bottom:6px; font-size:13px;">⚾ Connect ESPN Fantasy League</label>
+                        <p style="font-size:12px; color:#444; margin:0 0 10px; line-height:1.5;">
+                            <strong>Step 1:</strong> Drag the button below to your bookmarks bar.<br>
+                            <strong>Step 2:</strong> Go to your <a href="https://fantasy.espn.com/baseball/league" target="_blank">ESPN Fantasy Baseball league</a> page.<br>
+                            <strong>Step 3:</strong> Click the bookmark — it will import your league and bring you back here.
+                        </p>
+                        <div style="text-align:center; margin:10px 0;">
+                            <a href="<?php echo esc_attr( $bookmarklet ); ?>"
+                               style="display:inline-block; padding:10px 20px; background:#cc0000; color:#fff; font-weight:700; font-size:14px; border-radius:6px; text-decoration:none; border:2px dashed #fff; box-shadow:0 0 0 2px #cc0000; cursor:grab;"
+                               onclick="event.preventDefault(); alert('Drag this button to your bookmarks bar, then use it on your ESPN league page.');">
+                                ⚾ Razzbot ESPN Importer
+                            </a>
+                        </div>
+                        <p style="font-size:11px; color:#888; text-align:center; margin:6px 0 0;">Drag the red button above to your bookmarks bar</p>
                     </div>
 
                     <p style="text-align:center; font-size:13px; color:#888; margin:8px 0;">or upload a CSV</p>
@@ -220,11 +231,20 @@ function razzball_chatbot_shortcode() {
                         <button id="yahoo-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#6001d2; border-color:#6001d2;" onclick="window.location.href='https://valiant-healing-production-ce05.up.railway.app/api/yahoo/auth'">⚾ Connect Yahoo Fantasy League</button>
                         <div id="yahoo-status" class="status-message"></div>
                         <div style="margin-top:12px; padding-top:12px; border-top:1px solid #eee;">
-                            <label style="font-weight:600; display:block; margin-bottom:6px;">Connect ESPN Fantasy League</label>
-                            <p style="font-size:12px; color:#666; margin:0 0 8px;">Make sure you are logged into <a href="https://espn.com" target="_blank">espn.com</a> in this browser first.</p>
-                            <input type="text" id="espn-league-id" placeholder="ESPN League ID (numbers only)" style="width:100%; margin-bottom:6px; padding:6px 8px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; font-size:13px;">
-                            <button id="espn-connect-btn" class="btn btn-primary" style="width:100%; background:#cc0000; border-color:#cc0000;" onclick="handleESPNImport()">⚾ Connect ESPN League</button>
-                            <div id="espn-status" class="status-message" style="margin-top:6px;"></div>
+                            <label style="font-weight:600; display:block; margin-bottom:6px;">⚾ Connect ESPN Fantasy League</label>
+                            <p style="font-size:12px; color:#444; margin:0 0 10px; line-height:1.5;">
+                                <strong>Step 1:</strong> Drag the button below to your bookmarks bar.<br>
+                                <strong>Step 2:</strong> Go to your <a href="https://fantasy.espn.com/baseball/league" target="_blank">ESPN Fantasy Baseball league</a> page.<br>
+                                <strong>Step 3:</strong> Click the bookmark to import and return here.
+                            </p>
+                            <div style="text-align:center; margin:10px 0;">
+                                <a href="<?php echo esc_attr( $bookmarklet ); ?>"
+                                   style="display:inline-block; padding:10px 20px; background:#cc0000; color:#fff; font-weight:700; font-size:14px; border-radius:6px; text-decoration:none; border:2px dashed #fff; box-shadow:0 0 0 2px #cc0000; cursor:grab;"
+                                   onclick="event.preventDefault(); alert('Drag this button to your bookmarks bar, then use it on your ESPN league page.');">
+                                    ⚾ Razzbot ESPN Importer
+                                </a>
+                            </div>
+                            <p style="font-size:11px; color:#888; text-align:center; margin:6px 0 0;">Drag the red button to your bookmarks bar</p>
                         </div>
                         <button id="reupload-btn" class="btn btn-secondary" style="width:100%; margin-top:12px;">Upload New CSV</button>
                         <p class="setting-description">Connect your Yahoo or ESPN league, or upload a CSV from Fantrax, CBS, or NFBC</p>

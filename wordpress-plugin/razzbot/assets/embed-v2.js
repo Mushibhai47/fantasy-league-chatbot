@@ -38,8 +38,9 @@ function init() {
         console.log('Running in standalone mode');
     }
 
-    // Handle Yahoo OAuth callback if returning from Yahoo auth
+    // Handle OAuth/bookmarklet callbacks
     handleYahooCallback();
+    handleESPNCallback();
 
     // Load saved data from localStorage
     loadSavedData();
@@ -511,19 +512,45 @@ async function handleYahooCallback() {
     }
 }
 
-// ESPN Fantasy
-async function handleESPNImportFromUploadScreen() {
-    const leagueId = document.getElementById('espn-league-id-upload')?.value?.trim();
-    const statusEl = document.getElementById('espn-status-upload');
-    await _doESPNImport(leagueId, null, null, statusEl);
+// ESPN bookmarklet callback — fired when the bookmarklet redirects back with ?espn_league=<id>
+function handleESPNCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const leagueId = params.get('espn_league');
+    if (!leagueId) return;
+
+    // Clean the URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    state.leagueId = leagueId;
+    state.selectedTeam = null;
+    localStorage.setItem('razzball_league_id', leagueId);
+    localStorage.removeItem('razzball_selected_team');
+
+    showSetupScreen('upload');
+    const statusEl = document.getElementById('upload-status');
+    if (statusEl) showStatus(statusEl, 'ESPN league connected! Now choose your team below.', 'success');
+
+    // Fetch team list from the saved league so we can populate the selector
+    fetch(`${API_BASE_URL}/csv/${leagueId}/teams`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+            if (data && data.teams && data.teams.length > 0) {
+                populateTeamSelector(data.teams);
+            }
+            setTimeout(() => {
+                showSetupScreen('ready');
+                const ltSelector = document.getElementById('league-type-selector');
+                if (ltSelector) ltSelector.value = state.selectedLeagueType;
+            }, 1000);
+        })
+        .catch(() => {
+            setTimeout(() => showSetupScreen('ready'), 1000);
+        });
 }
 
-async function handleESPNImport() {
-    const leagueId = document.getElementById('espn-league-id')?.value?.trim();
-    const statusEl = document.getElementById('espn-status');
-    console.log('[ESPN] handleESPNImport called, leagueId=', leagueId);
-    await _doESPNImport(leagueId, null, null, statusEl);
-}
+// ESPN Fantasy
+async function handleESPNImportFromUploadScreen() {}
+async function handleESPNImport() {}
 
 const ESPN_POSITION_MAP = {1:'C',2:'1B',3:'2B',4:'3B',5:'SS',6:'OF',7:'DH',8:'SP',9:'RP'};
 const ESPN_TEAM_MAP = {
