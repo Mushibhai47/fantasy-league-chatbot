@@ -41,6 +41,7 @@ function init() {
     // Handle OAuth/bookmarklet callbacks
     handleYahooCallback();
     handleESPNCallback();
+    setupESPNBookmarklet();
 
     // Load saved data from localStorage
     loadSavedData();
@@ -548,131 +549,43 @@ function handleESPNCallback() {
         });
 }
 
-// ESPN Fantasy
-async function handleESPNImportFromUploadScreen() {}
-async function handleESPNImport() {}
+// ESPN bookmarklet — JS lives here so PHP never touches it (avoids LiteSpeed cache issues)
+// The bookmarklet runs on ESPN's domain, bypassing IP blocks and CORS.
+function setupESPNBookmarklet() {
+    const bm = [
+        "javascript:(function(){",
+        "var P={1:'C',2:'1B',3:'2B',4:'3B',5:'SS',6:'OF',7:'DH',8:'SP',9:'RP'};",
+        "var T={1:'ATL',2:'BOS',3:'LAA',4:'CWS',5:'CLE',6:'COL',7:'DET',8:'HOU',9:'KC',10:'MIL',",
+        "11:'MIN',12:'NYM',13:'NYY',14:'OAK',15:'PHI',16:'PIT',17:'STL',18:'SD',19:'SF',",
+        "20:'SEA',21:'TB',22:'TEX',23:'TOR',24:'WSH',25:'ATH',26:'CIN',27:'LAD',28:'ARI',29:'CHC',30:'MIA'};",
+        "var m=location.href.match(/leagueId=(\\d+)/);",
+        "if(!m){alert('Go to your ESPN Fantasy Baseball league page first.');return;}",
+        "var lid=m[1];",
+        "fetch('https://fantasy.espn.com/apis/v3/games/flb/seasons/2026/segments/0/leagues/'+lid+'?view=mRoster&view=mTeam&view=mSettings',",
+        "{credentials:'include',headers:{Accept:'application/json'}})",
+        ".then(function(r){if(!r.ok)throw new Error('ESPN error '+r.status);return r.json();})",
+        ".then(function(d){",
+        "var nm={};(d.teams||[]).forEach(function(t){nm[t.id]=(t.name||t.abbrev||'Team '+t.id).trim();});",
+        "var pl=[];(d.teams||[]).forEach(function(t){",
+        "(t.roster&&t.roster.entries||[]).forEach(function(e){",
+        "var p=(e.playerPoolEntry&&e.playerPoolEntry.player)||{};",
+        "var n=(p.fullName||'').trim();if(!n)return;",
+        "pl.push({name:n,team:T[p.proTeamId]||'',position:P[p.defaultPositionId]||'UTIL',",
+        "owner:nm[t.id],status:e.lineupSlotId===17?'IL':null});});});",
+        "return fetch('https://valiant-healing-production-ce05.up.railway.app/api/espn/import-parsed',",
+        "{method:'POST',headers:{'Content-Type':'application/json'},",
+        "body:JSON.stringify({players:pl,league_name:(d.settings&&d.settings.name)||'',espn_league_id:lid})});",
+        "})",
+        ".then(function(r){if(!r.ok)throw new Error('Save failed: '+r.status);return r.json();})",
+        ".then(function(res){location.href='https://razzball.com/rotodeluxe/?espn_league='+res.id;})",
+        ".catch(function(e){alert('Razzbot ESPN: '+e.message);});",
+        "})();"
+    ].join('');
 
-const ESPN_POSITION_MAP = {1:'C',2:'1B',3:'2B',4:'3B',5:'SS',6:'OF',7:'DH',8:'SP',9:'RP'};
-const ESPN_TEAM_MAP = {
-    1:'ATL',2:'BOS',3:'LAA',4:'CWS',5:'CLE',6:'COL',7:'DET',8:'HOU',9:'KC',10:'MIL',
-    11:'MIN',12:'NYM',13:'NYY',14:'OAK',15:'PHI',16:'PIT',17:'STL',18:'SD',19:'SF',
-    20:'SEA',21:'TB',22:'TEX',23:'TOR',24:'WSH',25:'ATH',26:'CIN',27:'LAD',28:'ARI',
-    29:'CHC',30:'MIA'
-};
-const ESPN_IL_SLOTS = new Set([17]);
-
-function parseESPNResponse(data) {
-    const teams = data.teams || [];
-    const teamNameMap = {};
-    for (const t of teams) {
-        teamNameMap[t.id] = (t.name || t.abbrev || `Team ${t.id}`).trim();
-    }
-    const players = [];
-    for (const team of teams) {
-        const ownerName = teamNameMap[team.id];
-        for (const entry of (team.roster?.entries || [])) {
-            const lineupSlot = entry.lineupSlotId || 0;
-            const player = entry.playerPoolEntry?.player || {};
-            const playerName = (player.fullName || '').trim();
-            if (!playerName) continue;
-            players.push({
-                name: playerName,
-                team: ESPN_TEAM_MAP[player.proTeamId] || '',
-                position: ESPN_POSITION_MAP[player.defaultPositionId] || 'UTIL',
-                owner: ownerName,
-                status: ESPN_IL_SLOTS.has(lineupSlot) ? 'IL' : null
-            });
-        }
-    }
-    const leagueName = data.settings?.name || '';
-    const teamNames = [...new Set(players.map(p => p.owner))].sort();
-    return { players, leagueName, teamNames };
-}
-
-async function _doESPNImport(leagueId, espnS2, swid, statusEl) {
-    if (!leagueId) {
-        if (statusEl) showStatus(statusEl, 'Please enter your ESPN League ID.', 'error');
-        return;
-    }
-
-    if (statusEl) showStatus(statusEl, 'Connecting to ESPN...', 'info');
-    showLoading(true);
-
-    try {
-        // Call ESPN directly from the browser (avoids Railway IP blocks).
-        // Cookies are sent automatically via credentials:'include' if the
-        // user is already logged into ESPN in this browser.
-        const espnUrl = `https://fantasy.espn.com/apis/v3/games/flb/seasons/2026/segments/0/leagues/${leagueId}?view=mRoster&view=mTeam&view=mSettings`;
-        console.log('[ESPN] Fetching from browser:', espnUrl);
-
-        let espnData;
-        try {
-            const espnResp = await fetch(espnUrl, {
-                credentials: 'include',
-                headers: { 'Accept': 'application/json' }
-            });
-            if (espnResp.status === 401) throw new Error('ESPN auth failed — make sure you are logged into ESPN in this browser.');
-            if (espnResp.status === 404) throw new Error('ESPN league not found — check your League ID.');
-            if (!espnResp.ok) throw new Error(`ESPN returned ${espnResp.status}`);
-            espnData = await espnResp.json();
-        } catch (espnErr) {
-            if (espnErr.message.startsWith('ESPN')) throw espnErr;
-            // Network/CORS error
-            throw new Error('Could not reach ESPN from your browser. Make sure you are logged into ESPN.com in this tab, then try again.');
-        }
-
-        console.log('[ESPN] Got ESPN data, parsing...');
-        const { players, leagueName, teamNames } = parseESPNResponse(espnData);
-        console.log('[ESPN] Parsed', players.length, 'players across', teamNames.length, 'teams');
-
-        if (players.length === 0) throw new Error('No players found. Check that your League ID is correct and the league has rosters set.');
-
-        // Post parsed players to Railway (our own server — no IP blocks)
-        const response = await fetch(`${API_BASE_URL}/espn/import-parsed`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                players,
-                league_name: leagueName,
-                espn_league_id: leagueId,
-                existing_league_id: state.leagueId || null
-            })
-        });
-
-        if (!response.ok) {
-            let errMsg = 'Save failed';
-            try { const e = await response.json(); errMsg = e.detail || errMsg; } catch {}
-            throw new Error(errMsg);
-        }
-
-        const data = await response.json();
-        state.leagueId = data.id;
-        state.selectedTeam = null;
-        localStorage.setItem('razzball_league_id', data.id);
-        localStorage.removeItem('razzball_selected_team');
-
-        const uploadStatusEl = document.getElementById('upload-status');
-        const msg = `ESPN league loaded! ${players.length} players across ${teamNames.length} teams.`;
-        if (uploadStatusEl) showStatus(uploadStatusEl, msg, 'success');
-        if (statusEl && statusEl !== uploadStatusEl) showStatus(statusEl, msg, 'success');
-
-        if (teamNames.length > 0) populateTeamSelector(teamNames);
-
-        setTimeout(() => {
-            showSetupScreen('ready');
-            const ltSelector = document.getElementById('league-type-selector');
-            if (ltSelector) ltSelector.value = state.selectedLeagueType;
-        }, 1500);
-
-    } catch (error) {
-        console.error('[ESPN] Import error:', error);
-        const msg = error.message || 'Unknown error';
-        if (statusEl) showStatus(statusEl, `ESPN import failed: ${msg}`, 'error');
-        const uploadStatusEl = document.getElementById('upload-status');
-        if (uploadStatusEl && statusEl !== uploadStatusEl) showStatus(uploadStatusEl, `ESPN import failed: ${msg}`, 'error');
-    } finally {
-        showLoading(false);
-    }
+    const el1 = document.getElementById('espn-bookmarklet-upload');
+    const el2 = document.getElementById('espn-bookmarklet-settings');
+    if (el1) el1.href = bm;
+    if (el2) el2.href = bm;
 }
 
 // Chat Functionality
