@@ -582,10 +582,10 @@ function setupESPNBookmarklet() {
         "})();"
     ].join('');
 
-    const el1 = document.getElementById('espn-bookmarklet-upload');
-    const el2 = document.getElementById('espn-bookmarklet-settings');
-    if (el1) el1.href = bm;
-    if (el2) el2.href = bm;
+    const t1 = document.getElementById('espn-bm-code-upload');
+    const t2 = document.getElementById('espn-bm-code-settings');
+    if (t1) t1.value = bm;
+    if (t2) t2.value = bm;
 }
 
 // Chat Functionality

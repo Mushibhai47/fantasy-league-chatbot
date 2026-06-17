@@ -89,18 +89,13 @@ function razzball_chatbot_shortcode() {
 
                     <div style="margin-bottom:12px; padding:12px; border:1px solid #eee; border-radius:6px; background:#fafafa;">
                         <label style="font-weight:600; display:block; margin-bottom:6px; font-size:13px;">⚾ Connect ESPN Fantasy League</label>
-                        <p style="font-size:12px; color:#444; margin:0 0 10px; line-height:1.5;">
-                            <strong>Step 1:</strong> Drag the button below to your bookmarks bar.<br>
-                            <strong>Step 2:</strong> Go to your <a href="https://fantasy.espn.com/baseball/league" target="_blank">ESPN Fantasy Baseball league</a> page.<br>
-                            <strong>Step 3:</strong> Click the bookmark — it will import your league and bring you back here.
+                        <p style="font-size:12px; color:#444; margin:0 0 8px; line-height:1.6;">
+                            <strong>Step 1:</strong> Click <strong>Copy Code</strong> below.<br>
+                            <strong>Step 2:</strong> In Chrome: press <kbd style="background:#eee;padding:1px 4px;border-radius:3px;">Ctrl+D</kbd> → <em>Edit...</em> → paste the code as the URL → Save.<br>
+                            <strong>Step 3:</strong> Go to your <a href="https://fantasy.espn.com/baseball/league" target="_blank">ESPN Fantasy Baseball league</a> page, click the bookmark.
                         </p>
-                        <div style="text-align:center; margin:10px 0;">
-                            <a id="espn-bookmarklet-upload" href="#"
-                               style="display:inline-block; padding:10px 20px; background:#cc0000; color:#fff; font-weight:700; font-size:14px; border-radius:6px; text-decoration:none; border:2px dashed #fff; box-shadow:0 0 0 2px #cc0000; cursor:grab;">
-                                ⚾ Razzbot ESPN Importer
-                            </a>
-                        </div>
-                        <p style="font-size:11px; color:#888; text-align:center; margin:6px 0 0;">Drag the red button above to your bookmarks bar</p>
+                        <textarea id="espn-bm-code-upload" rows="2" readonly style="width:100%;font-size:10px;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;resize:none;background:#f8f8f8;color:#333;font-family:monospace;" placeholder="Loading..."></textarea>
+                        <button onclick="var t=document.getElementById('espn-bm-code-upload');t.select();document.execCommand('copy');this.textContent='Copied!';" style="width:100%;margin-top:6px;padding:8px;background:#cc0000;color:#fff;border:none;border-radius:4px;font-weight:700;cursor:pointer;font-size:13px;">Copy Code</button>
                     </div>
 
                     <p style="text-align:center; font-size:13px; color:#888; margin:8px 0;">or upload a CSV</p>
@@ -229,18 +224,13 @@ function razzball_chatbot_shortcode() {
                         <div id="yahoo-status" class="status-message"></div>
                         <div style="margin-top:12px; padding-top:12px; border-top:1px solid #eee;">
                             <label style="font-weight:600; display:block; margin-bottom:6px;">⚾ Connect ESPN Fantasy League</label>
-                            <p style="font-size:12px; color:#444; margin:0 0 10px; line-height:1.5;">
-                                <strong>Step 1:</strong> Drag the button below to your bookmarks bar.<br>
-                                <strong>Step 2:</strong> Go to your <a href="https://fantasy.espn.com/baseball/league" target="_blank">ESPN Fantasy Baseball league</a> page.<br>
-                                <strong>Step 3:</strong> Click the bookmark to import and return here.
+                            <p style="font-size:12px; color:#444; margin:0 0 8px; line-height:1.6;">
+                                <strong>Step 1:</strong> Click <strong>Copy Code</strong> below.<br>
+                                <strong>Step 2:</strong> In Chrome: press <kbd style="background:#eee;padding:1px 4px;border-radius:3px;">Ctrl+D</kbd> → <em>Edit...</em> → paste the code as the URL → Save.<br>
+                                <strong>Step 3:</strong> Go to your <a href="https://fantasy.espn.com/baseball/league" target="_blank">ESPN league</a> page, click the bookmark.
                             </p>
-                            <div style="text-align:center; margin:10px 0;">
-                                <a id="espn-bookmarklet-settings" href="#"
-                                   style="display:inline-block; padding:10px 20px; background:#cc0000; color:#fff; font-weight:700; font-size:14px; border-radius:6px; text-decoration:none; border:2px dashed #fff; box-shadow:0 0 0 2px #cc0000; cursor:grab;">
-                                    ⚾ Razzbot ESPN Importer
-                                </a>
-                            </div>
-                            <p style="font-size:11px; color:#888; text-align:center; margin:6px 0 0;">Drag the red button to your bookmarks bar</p>
+                            <textarea id="espn-bm-code-settings" rows="2" readonly style="width:100%;font-size:10px;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;resize:none;background:#f8f8f8;color:#333;font-family:monospace;" placeholder="Loading..."></textarea>
+                            <button onclick="var t=document.getElementById('espn-bm-code-settings');t.select();document.execCommand('copy');this.textContent='Copied!';" style="width:100%;margin-top:6px;padding:8px;background:#cc0000;color:#fff;border:none;border-radius:4px;font-weight:700;cursor:pointer;font-size:13px;">Copy Code</button>
                         </div>
                         <button id="reupload-btn" class="btn btn-secondary" style="width:100%; margin-top:12px;">Upload New CSV</button>
                         <p class="setting-description">Connect your Yahoo or ESPN league, or upload a CSV from Fantrax, CBS, or NFBC</p>
