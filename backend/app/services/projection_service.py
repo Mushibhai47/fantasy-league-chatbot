@@ -88,7 +88,7 @@ class ProjectionService:
 
             # Use standard requests (Cloudflare now allows access)
             logger.info(f"Fetching {self.projection_type} projections from {self.api_url}")
-            response = requests.get(self.api_url, headers=headers, timeout=120)  # 2 minutes for large response
+            response = requests.get(self.api_url, headers=headers, timeout=10)
             logger.info(f"Response status: {response.status_code}")
             logger.info(f"Response size: {len(response.content)} bytes")
             response.raise_for_status()
@@ -126,7 +126,9 @@ class ProjectionService:
             if self.projection_type in _PROJECTION_CACHE:
                 logger.warning("Using cached projections from previous fetch")
                 return _PROJECTION_CACHE[self.projection_type]
-            raise
+            # No cache — return empty DataFrame so chat still works without projections
+            logger.warning(f"No cache for {self.projection_type}, returning empty DataFrame")
+            return pd.DataFrame()
 
     def get_player_projection_by_fantrax_id(self, fantrax_id: str) -> Optional[Dict]:
         """
