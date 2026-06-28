@@ -10,7 +10,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'RAZZBOT_VERSION',    '1.0.5' );
+define( 'RAZZBOT_VERSION',    '1.0.6' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // ─── Enqueue CSS & JS only on the page that uses the shortcode ──────────────
