@@ -13,7 +13,8 @@ class League(Base):
 
     id = Column(GUID, primary_key=True)
     user_id = Column(GUID, ForeignKey("users.id"), nullable=False)
-    league_type = Column(String(20), nullable=False)  # 'fantrax', 'cbs', 'nfbc'
+    league_type = Column(String(20), nullable=False)  # 'fantrax', 'cbs', 'nfbc', 'yahoo'
+    sport = Column(String(10), nullable=False, server_default='mlb')  # 'mlb' or 'nfl'
     csv_filename = Column(String(255))
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

@@ -33,6 +33,28 @@ def init_db():
     """Initialize database tables"""
     import app.models  # noqa
     Base.metadata.create_all(bind=engine)
+    # Add columns that were added after initial deployment (safe to run repeatedly)
+    _run_migrations()
+
+
+def _run_migrations():
+    """Apply incremental schema changes that create_all() won't handle."""
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        dialect = engine.dialect.name
+        if dialect == 'postgresql':
+            conn.execute(text(
+                "ALTER TABLE leagues ADD COLUMN IF NOT EXISTS sport VARCHAR(10) DEFAULT 'mlb'"
+            ))
+            conn.commit()
+        else:
+            # SQLite: check if column exists before adding
+            result = conn.execute(text("PRAGMA table_info(leagues)"))
+            cols = [row[1] for row in result.fetchall()]
+            if 'sport' not in cols:
+                conn.execute(text("ALTER TABLE leagues ADD COLUMN sport VARCHAR(10) DEFAULT 'mlb'"))
+                conn.commit()
+    # scoring_profiles table is created by create_all() above (new table, no ALTER needed)
 
 
 # UUID type that works with both PostgreSQL and SQLite

@@ -10,7 +10,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'RAZZBOT_VERSION',    '1.0.6' );
+define( 'RAZZBOT_VERSION',    '1.0.7' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // ─── Enqueue CSS & JS only on the page that uses the shortcode ──────────────
@@ -123,7 +123,8 @@ function razzball_chatbot_shortcode() {
                             <option value="">-- Select your team --</option>
                         </select>
                     </div>
-                    <div class="input-group" style="margin-bottom: 16px;">
+                    <!-- MLB: league format selector -->
+                    <div id="mlb-format-section" class="input-group" style="margin-bottom: 16px;">
                         <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #555;">League Format</label>
                         <select id="league-type-selector" style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; width: 100%; background: white;">
                             <option value="MLB12">MLB12 (12-team mixed, 5x5)</option>
@@ -136,6 +137,16 @@ function razzball_chatbot_shortcode() {
                             <option value="MLB10">MLB10 (10-team mixed)</option>
                             <option value="AL12">AL12 (12-team AL-only)</option>
                             <option value="NL12">NL12 (12-team NL-only)</option>
+                        </select>
+                    </div>
+                    <!-- NFL: scoring preset selector (shown only for NFL leagues) -->
+                    <div id="nfl-scoring-section" class="input-group" style="display: none; margin-bottom: 16px;">
+                        <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #555;">Scoring Format</label>
+                        <select id="nfl-scoring-preset-selector" style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; width: 100%; background: white;">
+                            <option value="half_ppr">Half-PPR (default)</option>
+                            <option value="ppr">Full PPR</option>
+                            <option value="standard">Standard (no PPR)</option>
+                            <option value="superflex_half_ppr">Superflex Half-PPR</option>
                         </select>
                     </div>
                     <button id="start-chat-btn" class="btn btn-primary btn-large">Start Chatting</button>
@@ -156,8 +167,8 @@ function razzball_chatbot_shortcode() {
             <div id="chat-messages" class="chat-messages">
                 <div class="message bot-message">
                     <div class="message-content">
-                        <p>Welcome to Razzbot! Load your team by clicking the Settings button. Use the full league export from NFBC, Fantrax, or CBSSports (where you'll have to combine hitters and pitchers downloads). Use the one where you see league owner next to the player. (We have a link at <a href="https://razzball.com/rotodeluxe" target="_blank">razzball.com/rotodeluxe</a> if you need help.)</p>
-                        <p>You then choose your Team name and closest League format then press the buttons at the bottom to get a <strong>League Overview</strong> based on our ROS player rater, a <strong>Team Overview</strong> (type in Team Overview &lt;owner name&gt; if you are reviewing other teams), and Today/Tomorrow/Weekly pickups and start/sit (all your current players).</p>
+                        <p>Welcome to Razzbot! Load your team by clicking the Settings button. For <strong>MLB</strong>: use the full league export from NFBC, Fantrax, or CBSSports. For <strong>NFL</strong>: use the Fantrax "All Players" CSV export — we auto-detect it. (We have a link at <a href="https://razzball.com/rotodeluxe" target="_blank">razzball.com/rotodeluxe</a> if you need help.)</p>
+                        <p>Choose your Team name and League Format, then use the buttons below for a <strong>League Overview</strong>, <strong>Team Overview</strong>, <strong>Pickups</strong>, and <strong>Start/Sit</strong> recommendations powered by Razzball projections.</p>
                     </div>
                 </div>
             </div>
@@ -172,7 +183,8 @@ function razzball_chatbot_shortcode() {
 
             <div id="message-counter" style="display: none; text-align: center; padding: 8px; font-size: 13px; color: #666;"></div>
 
-            <div class="quick-actions">
+            <!-- MLB quick-action buttons -->
+            <div class="quick-actions" id="mlb-quick-actions">
                 <div class="btn-category">
                     <span class="btn-category-label">Pickups:</span>
                     <button class="quick-action-btn" data-query="today pickups">Today</button>
@@ -184,6 +196,23 @@ function razzball_chatbot_shortcode() {
                     <button class="quick-action-btn team-action" data-query="today start/sit {team}">Today</button>
                     <button class="quick-action-btn team-action" data-query="tomorrow start/sit {team}">Tomorrow</button>
                     <button class="quick-action-btn team-action" data-query="weekly start/sit {team}">Weekly</button>
+                </div>
+                <div class="btn-category">
+                    <span class="btn-category-label">Overview:</span>
+                    <button class="quick-action-btn" data-query="league overview">League</button>
+                    <button class="quick-action-btn team-action" data-query="team overview {team}">Team</button>
+                </div>
+            </div>
+            <!-- NFL quick-action buttons (shown only for NFL leagues) -->
+            <div class="quick-actions" id="nfl-quick-actions" style="display: none;">
+                <div class="btn-category">
+                    <span class="btn-category-label">Pickups:</span>
+                    <button class="quick-action-btn" data-query="weekly pickups">Weekly</button>
+                    <button class="quick-action-btn" data-query="ros pickups">ROS</button>
+                </div>
+                <div class="btn-category">
+                    <span class="btn-category-label">Start/Sit:</span>
+                    <button class="quick-action-btn team-action" data-query="start sit {team}">Weekly</button>
                 </div>
                 <div class="btn-category">
                     <span class="btn-category-label">Overview:</span>

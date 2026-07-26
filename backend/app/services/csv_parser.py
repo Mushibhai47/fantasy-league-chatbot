@@ -7,19 +7,35 @@ import re
 class CSVParser:
     """Parse fantasy league CSV files"""
 
+    # NFL positions — none overlap with MLB positions
+    _NFL_POSITIONS = {'QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DST', 'DB', 'DL', 'LB', 'DT', 'DE', 'S', 'CB'}
+    _MLB_POSITIONS = {'SP', 'RP', 'OF', '1B', '2B', '3B', 'SS', 'C', 'DH', 'P', 'MI', 'CI', 'UTIL'}
+
+    @staticmethod
+    def _is_nfl_fantrax(df: pd.DataFrame) -> bool:
+        """Return True if Fantrax CSV contains NFL roster (positions like QB/RB/WR/TE)."""
+        pos_cols = [col for col in df.columns if col.lower().strip() == 'position']
+        if not pos_cols:
+            return False
+        positions = set(df[pos_cols[0]].dropna().astype(str).str.upper().str.strip().unique())
+        nfl_hits = positions & CSVParser._NFL_POSITIONS
+        mlb_hits = positions & CSVParser._MLB_POSITIONS
+        return len(nfl_hits) > 0 and len(mlb_hits) == 0
+
     @staticmethod
     def detect_league_type(df: pd.DataFrame) -> str:
         """
-        Detect which league platform the CSV is from
-        Returns: 'fantrax', 'cbs', 'nfbc', or 'unknown'
+        Detect which league platform the CSV is from.
+        Returns: 'fantrax', 'fantrax_nfl', 'cbs', 'nfbc', or 'unknown'
         """
         columns = [col.lower().strip() for col in df.columns]
 
         # Fantrax has unique 'ID' column with format like *05ajh*
         if 'id' in columns:
-            # Find the actual column name (case-insensitive)
             id_col = [col for col in df.columns if col.lower().strip() == 'id'][0]
             if pd.notna(df[id_col].iloc[0]) and str(df[id_col].iloc[0]).startswith('*'):
+                if CSVParser._is_nfl_fantrax(df):
+                    return 'fantrax_nfl'
                 return 'fantrax'
 
         # CBS Sports has 'Avail' column (team owner name)
@@ -146,6 +162,39 @@ class CSVParser:
         return players
 
     @staticmethod
+    def parse_fantrax_nfl(file_path: str) -> List[Dict]:
+        """
+        Parse Fantrax NFL CSV.
+        Same column structure as baseball Fantrax:
+          ID (*XXXXX*), Player, Team, Position, Status (owner or 'FA'), Roster Status, ...
+        """
+        df = CSVParser._read_file(file_path)
+        players = []
+
+        for _, row in df.iterrows():
+            status = row.get('Status', '')
+            if pd.notna(status) and str(status).strip() not in ['-', '', 'FA']:
+                owner = str(status).strip()
+            else:
+                owner = 'Free Agent'
+
+            fantrax_id = str(row.get('ID', '')).strip()
+
+            player = {
+                'fantrax_id': fantrax_id,
+                'name': str(row.get('Player', '')).strip(),
+                'mlb_team': str(row.get('Team', '')).strip(),   # NFL team abbreviation
+                'position': str(row.get('Position', '')).strip(),
+                'owner': owner,
+                'league_type': 'fantrax',
+                'sport': 'nfl',
+                'status': str(status) if pd.notna(status) else None,
+            }
+            players.append(player)
+
+        return players
+
+    @staticmethod
     def parse_nfbc(file_path: str) -> List[Dict]:
         """
         Parse NFBC CSV
@@ -219,7 +268,9 @@ class CSVParser:
             except:
                 pass
 
-        if league_type == 'fantrax':
+        if league_type == 'fantrax_nfl':
+            players = CSVParser.parse_fantrax_nfl(file_path)
+        elif league_type == 'fantrax':
             players = CSVParser.parse_fantrax(file_path)
         elif league_type == 'cbs':
             players = CSVParser.parse_cbs(file_path)

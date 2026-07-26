@@ -23,3 +23,4 @@ class User(Base):
     # Relationships
     leagues = relationship("League", back_populates="user", cascade="all, delete-orphan")
     api_keys = relationship("APIKey", back_populates="user", cascade="all, delete-orphan")
+    scoring_profiles = relationship("ScoringProfile", back_populates="user", cascade="all, delete-orphan")

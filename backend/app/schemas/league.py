@@ -27,6 +27,7 @@ class LeagueResponse(BaseModel):
     """League upload response"""
     id: UUID
     league_type: str
+    sport: str = 'mlb'
     total_players: int
     owned_players: int
     free_agents: int

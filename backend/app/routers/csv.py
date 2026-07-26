@@ -43,6 +43,11 @@ async def upload_csv(
         parser = CSVParser()
         players_data, league_type = parser.parse_csv(tmp_file_path)
 
+        # Determine sport from detected league type
+        sport = 'nfl' if league_type == 'fantrax_nfl' else 'mlb'
+        # Normalize NFL fantrax type to 'fantrax' for storage
+        stored_league_type = 'fantrax' if league_type == 'fantrax_nfl' else league_type
+
         # If re-uploading, delete old rosters and league to prevent accumulation
         user = None
         if existing_league_id:
@@ -69,7 +74,8 @@ async def upload_csv(
         league = League(
             id=uuid.uuid4(),
             user_id=user.id,
-            league_type=league_type,
+            league_type=stored_league_type,
+            sport=sport,
             csv_filename=file.filename
         )
         db.add(league)
@@ -116,7 +122,8 @@ async def upload_csv(
         # Return response
         return LeagueResponse(
             id=league.id,
-            league_type=league_type,
+            league_type=stored_league_type,
+            sport=sport,
             total_players=len(players_data),
             owned_players=owned_count,
             free_agents=free_agent_count,

@@ -16,6 +16,8 @@ const state = {
     userEmail: null,
     selectedTeam: null,  // Selected team name for quick actions
     selectedLeagueType: 'MLB12',  // Projection league type (MLB12, MLB15, etc.)
+    sport: 'mlb',                 // 'mlb' or 'nfl'
+    nflScoringPreset: 'half_ppr', // NFL scoring preset
     conversationHistory: [],
     messagesRemaining: null,
     dailyLimit: 7
@@ -80,16 +82,26 @@ function setupEventListeners() {
     });
     document.getElementById('file-input').addEventListener('change', handleFileSelect);
     document.getElementById('start-chat-btn').addEventListener('click', () => {
-        // Save team and league type selections before entering chat
+        // Save team selection
         const teamSel = document.getElementById('team-selector');
         if (teamSel && teamSel.value) {
             state.selectedTeam = teamSel.value;
             localStorage.setItem('razzball_selected_team', teamSel.value);
         }
-        const ltSel = document.getElementById('league-type-selector');
-        if (ltSel && ltSel.value) {
-            state.selectedLeagueType = ltSel.value;
-            localStorage.setItem('razzball_league_type', ltSel.value);
+        if (state.sport === 'nfl') {
+            // Save NFL scoring preset
+            const presetSel = document.getElementById('nfl-scoring-preset-selector');
+            if (presetSel && presetSel.value) {
+                state.nflScoringPreset = presetSel.value;
+                localStorage.setItem('razzball_nfl_scoring_preset', presetSel.value);
+            }
+        } else {
+            // Save MLB league format
+            const ltSel = document.getElementById('league-type-selector');
+            if (ltSel && ltSel.value) {
+                state.selectedLeagueType = ltSel.value;
+                localStorage.setItem('razzball_league_type', ltSel.value);
+            }
         }
         showChatScreen();
     });
@@ -224,6 +236,20 @@ function loadSavedData() {
     if (savedTeam) {
         state.selectedTeam = savedTeam;
     }
+
+    // Load saved sport
+    const savedSport = localStorage.getItem('razzball_sport');
+    if (savedSport) {
+        state.sport = savedSport;
+    }
+
+    // Load saved NFL scoring preset
+    const savedNflPreset = localStorage.getItem('razzball_nfl_scoring_preset');
+    if (savedNflPreset) {
+        state.nflScoringPreset = savedNflPreset;
+        const presetSel = document.getElementById('nfl-scoring-preset-selector');
+        if (presetSel) presetSel.value = savedNflPreset;
+    }
 }
 
 async function showAppropriateScreen() {
@@ -234,6 +260,7 @@ async function showAppropriateScreen() {
         } else {
             // Has league but no team - show team selector, wait for teams to load first
             showSetupScreen('ready');
+            updateReadyScreenForSport();
             await loadTeamsForSelector();
         }
     } else {
@@ -262,11 +289,46 @@ function showChatScreen() {
     document.getElementById('chat-screen').classList.add('active');
     document.getElementById('chat-input').focus();
 
+    // Show sport-appropriate quick-action buttons
+    const mlbActions = document.getElementById('mlb-quick-actions');
+    const nflActions = document.getElementById('nfl-quick-actions');
+    if (state.sport === 'nfl') {
+        if (mlbActions) mlbActions.style.display = 'none';
+        if (nflActions) nflActions.style.display = 'flex';
+        // Update placeholder text
+        const inp = document.getElementById('chat-input');
+        if (inp) inp.placeholder = 'Ask me about your NFL fantasy team...';
+        // Update league badge
+        const badge = document.getElementById('league-indicator');
+        if (badge) badge.textContent = '🏈 NFL League Loaded';
+    } else {
+        if (mlbActions) mlbActions.style.display = 'flex';
+        if (nflActions) nflActions.style.display = 'none';
+    }
+
     // Initialize message counter display
     if (state.apiKey) {
         updateMessageCounter(null); // Unlimited
     } else {
         updateMessageCounter(state.messagesRemaining || state.dailyLimit); // Show default or saved value
+    }
+}
+
+function updateReadyScreenForSport() {
+    const mlbSection = document.getElementById('mlb-format-section');
+    const nflSection = document.getElementById('nfl-scoring-section');
+    if (state.sport === 'nfl') {
+        if (mlbSection) mlbSection.style.display = 'none';
+        if (nflSection) nflSection.style.display = 'block';
+        // Pre-select saved preset
+        const presetSel = document.getElementById('nfl-scoring-preset-selector');
+        if (presetSel) presetSel.value = state.nflScoringPreset || 'half_ppr';
+    } else {
+        if (mlbSection) mlbSection.style.display = 'block';
+        if (nflSection) nflSection.style.display = 'none';
+        // Restore MLB league type
+        const ltSelector = document.getElementById('league-type-selector');
+        if (ltSelector) ltSelector.value = state.selectedLeagueType;
     }
 }
 
@@ -292,7 +354,10 @@ function populateTeamSelector(teams) {
 async function loadTeamsForSelector() {
     if (!state.leagueId) return;
     try {
-        const response = await fetch(`${API_BASE_URL}/csv/${state.leagueId}/teams`);
+        const teamsUrl = state.sport === 'nfl'
+            ? `${API_BASE_URL}/nfl/${state.leagueId}/teams`
+            : `${API_BASE_URL}/csv/${state.leagueId}/teams`;
+        const response = await fetch(teamsUrl);
         if (response.ok) {
             const data = await response.json();
             if (data.teams && data.teams.length > 0) {
@@ -409,10 +474,13 @@ async function uploadFile(file) {
         // Save league ID and clear stale team selection from previous upload
         state.leagueId = data.id;
         state.selectedTeam = null;
+        state.sport = data.sport || 'mlb';
         localStorage.setItem('razzball_league_id', data.id);
+        localStorage.setItem('razzball_sport', state.sport);
         localStorage.removeItem('razzball_selected_team');
 
-        showStatus(statusEl, `✅ Success! Loaded ${data.total_players} players from your league`, 'success');
+        const sportLabel = state.sport === 'nfl' ? '🏈 NFL' : '⚾ MLB';
+        showStatus(statusEl, `✅ ${sportLabel} league loaded! ${data.total_players} players found.`, 'success');
 
         // Populate teams immediately from upload response (eliminates race condition)
         if (data.teams && data.teams.length > 0) {
@@ -421,9 +489,7 @@ async function uploadFile(file) {
 
         setTimeout(() => {
             showSetupScreen('ready');
-            // Restore league type selector to saved value
-            const ltSelector = document.getElementById('league-type-selector');
-            if (ltSelector) ltSelector.value = state.selectedLeagueType;
+            updateReadyScreenForSport();
         }, 1500);
 
     } catch (error) {
@@ -605,20 +671,30 @@ async function handleSendMessage() {
     setLoadingState(true);
 
     try {
-        const response = await fetch(`${API_BASE_URL}/chat/`, {
+        const isNFL = state.sport === 'nfl';
+        const chatEndpoint = isNFL ? `${API_BASE_URL}/nfl/chat/` : `${API_BASE_URL}/chat/`;
+        const chatBody = isNFL ? {
+            message: message,
+            league_id: state.leagueId,
+            user_id: state.userId,
+            user_api_key: state.apiKey || null,
+            selected_team: state.selectedTeam || null,
+            scoring_preset: state.nflScoringPreset || 'half_ppr',
+            conversation_history: state.conversationHistory.slice(-12)
+        } : {
+            message: message,
+            league_id: state.leagueId,
+            user_id: state.userId,
+            user_api_key: state.apiKey || null,
+            provider: 'openai',
+            league_type: state.selectedLeagueType || 'MLB12',
+            conversation_history: state.conversationHistory.slice(-6)
+        };
+
+        const response = await fetch(chatEndpoint, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                message: message,
-                league_id: state.leagueId,
-                user_id: state.userId,
-                user_api_key: state.apiKey || null,  // Optional - backend will use its key if null
-                provider: 'openai',
-                league_type: state.selectedLeagueType || 'MLB12',
-                conversation_history: state.conversationHistory.slice(-6)  // Send last 6 messages for memory
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(chatBody)
         });
 
         if (response.status === 429) {
