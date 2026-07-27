@@ -10,7 +10,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'RAZZBOT_VERSION',    '1.0.7' );
+define( 'RAZZBOT_VERSION',    '1.0.8' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // ─── Enqueue CSS & JS only on the page that uses the shortcode ──────────────
@@ -52,8 +52,28 @@ function razzbot_conditional_enqueue() {
 // ─── Shortcode: [razzball_chatbot] ──────────────────────────────────────────
 
 add_shortcode( 'razzball_chatbot', 'razzball_chatbot_shortcode' );
-function razzball_chatbot_shortcode() {
+function razzball_chatbot_shortcode( $atts ) {
+    $atts        = shortcode_atts( [ 'sport' => '' ], $atts, 'razzball_chatbot' );
+    $force_sport = sanitize_text_field( $atts['sport'] ); // 'mlb', 'nfl', or ''
+
+    // Sport-specific copy
+    $is_nfl       = ( $force_sport === 'nfl' );
+    $is_mlb       = ( $force_sport === 'mlb' );
+    $sport_label  = $is_nfl ? 'Football' : 'Baseball';
+    $upload_icon  = $is_nfl ? '🏈' : ( $is_mlb ? '⚾' : '📄' );
+    $upload_hint  = $is_nfl
+        ? 'Upload your Fantrax NFL "All Players" CSV export'
+        : 'Upload a CSV from Fantrax, CBS, or NFBC — or connect Yahoo / ESPN';
+    $placeholder  = $is_nfl
+        ? 'Ask me about your NFL fantasy team...'
+        : 'Ask me anything about your fantasy baseball team...';
+
     ob_start();
+
+    // Inject force-sport JS variable so the widget locks to this sport
+    if ( $force_sport ) {
+        echo '<script>window.razzbotForceSport=' . wp_json_encode( $force_sport ) . ';</script>';
+    }
     ?>
     <div id="razzball-chatbot-embed">
 
@@ -61,8 +81,8 @@ function razzball_chatbot_shortcode() {
         <div id="setup-screen" class="screen active">
             <div class="setup-container">
                 <div class="logo-section">
-                    <h1>Razzbot</h1>
-                    <p>The Fantasy Baseball Assistant by Razzball</p>
+                    <h1><?php echo $is_nfl ? '🏈' : ''; ?> Razzbot</h1>
+                    <p>The Fantasy <?php echo esc_html( $sport_label ); ?> Assistant by Razzball</p>
                 </div>
 
                 <div class="setup-step" id="step-api-key" style="display: none;">
@@ -81,10 +101,11 @@ function razzball_chatbot_shortcode() {
 
                 <div class="setup-step" id="step-upload">
                     <h2>Load Your League</h2>
-                    <p class="step-description">Connect your Yahoo or ESPN league, or upload a CSV from Fantrax, CBS, or NFBC</p>
+                    <p class="step-description"><?php echo esc_html( $upload_hint ); ?></p>
 
                     <div id="yahoo-status" class="status-message"></div>
 
+                    <?php if ( ! $is_nfl ) : ?>
                     <button id="yahoo-connect-btn-upload" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#6001d2; border-color:#6001d2;" onclick="window.location.href='https://valiant-healing-production-ce05.up.railway.app/api/yahoo/auth'">⚾ Connect Yahoo Fantasy League</button>
 
                     <div style="margin-bottom:12px; padding:12px; border:1px solid #eee; border-radius:6px; background:#fafafa;">
@@ -99,9 +120,10 @@ function razzball_chatbot_shortcode() {
                     </div>
 
                     <p style="text-align:center; font-size:13px; color:#888; margin:8px 0;">or upload a CSV</p>
+                    <?php endif; ?>
 
                     <div class="upload-area" id="upload-area">
-                        <div class="upload-icon">📄</div>
+                        <div class="upload-icon"><?php echo esc_html( $upload_icon ); ?></div>
                         <p>Drag and drop your league file here</p>
                         <p class="upload-or">or</p>
                         <input type="file" id="file-input" accept=".csv,.xls,.xlsx" style="display: none;" />
@@ -174,7 +196,7 @@ function razzball_chatbot_shortcode() {
             </div>
 
             <div class="chat-input-container">
-                <textarea id="chat-input" placeholder="Ask me anything about your fantasy baseball team..." rows="2"></textarea>
+                <textarea id="chat-input" placeholder="<?php echo esc_attr( $placeholder ); ?>" rows="2"></textarea>
                 <button id="send-btn" class="btn btn-primary">
                     <span id="send-icon">Send</span>
                     <span id="loading-icon" style="display: none;">●●●</span>

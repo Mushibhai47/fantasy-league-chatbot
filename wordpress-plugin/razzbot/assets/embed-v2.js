@@ -23,6 +23,14 @@ const state = {
     dailyLimit: 7
 };
 
+// Apply sport-specific CSS class to the container
+function applySportClass() {
+    const container = document.getElementById('razzball-chatbot-embed');
+    if (!container) return;
+    container.classList.remove('sport-mlb', 'sport-nfl');
+    container.classList.add('sport-' + (state.sport || 'mlb'));
+}
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', init);
 
@@ -47,6 +55,15 @@ function init() {
 
     // Load saved data from localStorage
     loadSavedData();
+
+    // Lock sport if shortcode forced it (e.g. [razzball_chatbot sport="nfl"])
+    if (window.razzbotForceSport && ['mlb', 'nfl'].includes(window.razzbotForceSport)) {
+        state.sport = window.razzbotForceSport;
+        localStorage.setItem('razzball_sport', state.sport);
+    }
+
+    // Apply sport theme class immediately
+    applySportClass();
 
     // Setup event listeners
     setupEventListeners();
@@ -288,6 +305,7 @@ function showChatScreen() {
     document.getElementById('setup-screen').classList.remove('active');
     document.getElementById('chat-screen').classList.add('active');
     document.getElementById('chat-input').focus();
+    applySportClass();
 
     // Show sport-appropriate quick-action buttons
     const mlbActions = document.getElementById('mlb-quick-actions');
@@ -300,10 +318,12 @@ function showChatScreen() {
         if (inp) inp.placeholder = 'Ask me about your NFL fantasy team...';
         // Update league badge
         const badge = document.getElementById('league-indicator');
-        if (badge) badge.textContent = '🏈 NFL League Loaded';
+        if (badge) { badge.textContent = '🏈 NFL Loaded'; badge.classList.add('badge-nfl'); }
     } else {
         if (mlbActions) mlbActions.style.display = 'flex';
         if (nflActions) nflActions.style.display = 'none';
+        const badge = document.getElementById('league-indicator');
+        if (badge) { badge.textContent = '⚾ League Loaded'; badge.classList.remove('badge-nfl'); }
     }
 
     // Initialize message counter display
@@ -474,10 +494,14 @@ async function uploadFile(file) {
         // Save league ID and clear stale team selection from previous upload
         state.leagueId = data.id;
         state.selectedTeam = null;
-        state.sport = data.sport || 'mlb';
+        // Respect shortcode force-sport; otherwise use what the backend detected
+        if (!window.razzbotForceSport) {
+            state.sport = data.sport || 'mlb';
+        }
         localStorage.setItem('razzball_league_id', data.id);
         localStorage.setItem('razzball_sport', state.sport);
         localStorage.removeItem('razzball_selected_team');
+        applySportClass();
 
         const sportLabel = state.sport === 'nfl' ? '🏈 NFL' : '⚾ MLB';
         showStatus(statusEl, `✅ ${sportLabel} league loaded! ${data.total_players} players found.`, 'success');
