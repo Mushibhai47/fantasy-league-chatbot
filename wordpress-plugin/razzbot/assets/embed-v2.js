@@ -3,6 +3,13 @@
  * Handles API key management, CSV upload, and chat functionality
  */
 
+// Safe localStorage wrapper — Edge Tracking Prevention can block storage access
+const ls = {
+    get: (k) => { try { return ls.get(k); } catch(e) { return null; } },
+    set: (k, v) => { try { ls.set(k, v); } catch(e) {} },
+    remove: (k) => { try { ls.remove(k); } catch(e) {} }
+};
+
 // Configuration
 const API_BASE_URL = window.location.hostname === 'localhost'
     ? 'http://localhost:8000/api'
@@ -59,7 +66,7 @@ function init() {
     // Lock sport if shortcode forced it (e.g. [razzball_chatbot sport="nfl"])
     if (window.razzbotForceSport && ['mlb', 'nfl'].includes(window.razzbotForceSport)) {
         state.sport = window.razzbotForceSport;
-        localStorage.setItem('razzball_sport', state.sport);
+        ls.set('razzball_sport', state.sport);
     }
 
     // Apply sport theme class immediately
@@ -103,21 +110,21 @@ function setupEventListeners() {
         const teamSel = document.getElementById('team-selector');
         if (teamSel && teamSel.value) {
             state.selectedTeam = teamSel.value;
-            localStorage.setItem('razzball_selected_team', teamSel.value);
+            ls.set('razzball_selected_team', teamSel.value);
         }
         if (state.sport === 'nfl') {
             // Save NFL scoring preset
             const presetSel = document.getElementById('nfl-scoring-preset-selector');
             if (presetSel && presetSel.value) {
                 state.nflScoringPreset = presetSel.value;
-                localStorage.setItem('razzball_nfl_scoring_preset', presetSel.value);
+                ls.set('razzball_nfl_scoring_preset', presetSel.value);
             }
         } else {
             // Save MLB league format
             const ltSel = document.getElementById('league-type-selector');
             if (ltSel && ltSel.value) {
                 state.selectedLeagueType = ltSel.value;
-                localStorage.setItem('razzball_league_type', ltSel.value);
+                ls.set('razzball_league_type', ltSel.value);
             }
         }
         showChatScreen();
@@ -178,14 +185,14 @@ function setupEventListeners() {
     document.getElementById('team-selector')?.addEventListener('change', (e) => {
         state.selectedTeam = e.target.value || null;
         if (state.selectedTeam) {
-            localStorage.setItem('razzball_selected_team', state.selectedTeam);
+            ls.set('razzball_selected_team', state.selectedTeam);
         }
     });
 
     // League type selector
     document.getElementById('league-type-selector')?.addEventListener('change', (e) => {
         state.selectedLeagueType = e.target.value || 'MLB12';
-        localStorage.setItem('razzball_league_type', state.selectedLeagueType);
+        ls.set('razzball_league_type', state.selectedLeagueType);
     });
 
     // Settings modal
@@ -216,9 +223,9 @@ function setupEventListeners() {
 
 function loadSavedData() {
     // Load from localStorage
-    const savedApiKey = localStorage.getItem('razzball_api_key');
-    const savedLeagueId = localStorage.getItem('razzball_league_id');
-    let savedUserId = localStorage.getItem('razzball_user_id');
+    const savedApiKey = ls.get('razzball_api_key');
+    const savedLeagueId = ls.get('razzball_league_id');
+    let savedUserId = ls.get('razzball_user_id');
 
     if (savedApiKey) {
         state.apiKey = savedApiKey;
@@ -233,15 +240,15 @@ function loadSavedData() {
     // counter is tied to the WP login rather than a per-device random ID
     if (window.razzbotUserId) {
         savedUserId = window.razzbotUserId;
-        localStorage.setItem('razzball_user_id', savedUserId);
+        ls.set('razzball_user_id', savedUserId);
     } else if (!savedUserId) {
         savedUserId = generateUserId();
-        localStorage.setItem('razzball_user_id', savedUserId);
+        ls.set('razzball_user_id', savedUserId);
     }
     state.userId = savedUserId;
 
     // Load saved league type
-    const savedLeagueType = localStorage.getItem('razzball_league_type');
+    const savedLeagueType = ls.get('razzball_league_type');
     if (savedLeagueType) {
         state.selectedLeagueType = savedLeagueType;
         const ltSelector = document.getElementById('league-type-selector');
@@ -249,19 +256,19 @@ function loadSavedData() {
     }
 
     // Load saved team selection
-    const savedTeam = localStorage.getItem('razzball_selected_team');
+    const savedTeam = ls.get('razzball_selected_team');
     if (savedTeam) {
         state.selectedTeam = savedTeam;
     }
 
     // Load saved sport
-    const savedSport = localStorage.getItem('razzball_sport');
+    const savedSport = ls.get('razzball_sport');
     if (savedSport) {
         state.sport = savedSport;
     }
 
     // Load saved NFL scoring preset
-    const savedNflPreset = localStorage.getItem('razzball_nfl_scoring_preset');
+    const savedNflPreset = ls.get('razzball_nfl_scoring_preset');
     if (savedNflPreset) {
         state.nflScoringPreset = savedNflPreset;
         const presetSel = document.getElementById('nfl-scoring-preset-selector');
@@ -385,8 +392,8 @@ async function loadTeamsForSelector() {
             } else {
                 // League data was cleared (server restart/redeploy wiped the DB)
                 state.leagueId = null;
-                localStorage.removeItem('razzball_league_id');
-                localStorage.removeItem('razzball_selected_team');
+                ls.remove('razzball_league_id');
+                ls.remove('razzball_selected_team');
                 showSetupScreen('upload');
                 showStatus(
                     document.getElementById('upload-status'),
@@ -397,8 +404,8 @@ async function loadTeamsForSelector() {
         } else {
             // League not found (404) — stale leagueId
             state.leagueId = null;
-            localStorage.removeItem('razzball_league_id');
-            localStorage.removeItem('razzball_selected_team');
+            ls.remove('razzball_league_id');
+            ls.remove('razzball_selected_team');
             showSetupScreen('upload');
             showStatus(
                 document.getElementById('upload-status'),
@@ -425,7 +432,7 @@ async function handleSaveApiKey() {
 
     // Save API key
     state.apiKey = apiKey;
-    localStorage.setItem('razzball_api_key', apiKey);
+    ls.set('razzball_api_key', apiKey);
 
     // Show success and move to next step
     showStatus(statusEl, 'API key saved successfully!', 'success');
@@ -498,9 +505,9 @@ async function uploadFile(file) {
         if (!window.razzbotForceSport) {
             state.sport = data.sport || 'mlb';
         }
-        localStorage.setItem('razzball_league_id', data.id);
-        localStorage.setItem('razzball_sport', state.sport);
-        localStorage.removeItem('razzball_selected_team');
+        ls.set('razzball_league_id', data.id);
+        ls.set('razzball_sport', state.sport);
+        ls.remove('razzball_selected_team');
         applySportClass();
 
         const sportLabel = state.sport === 'nfl' ? '🏈 NFL' : '⚾ MLB';
@@ -578,10 +585,10 @@ async function handleYahooCallback() {
         const data = await response.json();
         state.leagueId = data.id;
         state.selectedTeam = null;
-        localStorage.setItem('razzball_league_id', data.id);
-        localStorage.setItem('razzball_yahoo_token', accessToken);
-        localStorage.setItem('razzball_yahoo_refresh', data.refresh_token || refreshToken);
-        localStorage.removeItem('razzball_selected_team');
+        ls.set('razzball_league_id', data.id);
+        ls.set('razzball_yahoo_token', accessToken);
+        ls.set('razzball_yahoo_refresh', data.refresh_token || refreshToken);
+        ls.remove('razzball_selected_team');
 
         showStatus(statusEl, `✅ Yahoo league loaded! ${data.owned_players} players across ${data.teams.length} teams.`, 'success');
 
@@ -614,8 +621,8 @@ function handleESPNCallback() {
 
     state.leagueId = leagueId;
     state.selectedTeam = null;
-    localStorage.setItem('razzball_league_id', leagueId);
-    localStorage.removeItem('razzball_selected_team');
+    ls.set('razzball_league_id', leagueId);
+    ls.remove('razzball_selected_team');
 
     showSetupScreen('upload');
     const statusEl = document.getElementById('upload-status');
@@ -741,8 +748,8 @@ async function handleSendMessage() {
             // League data was lost (server restart wiped the DB) — clear stale ID and prompt re-upload
             state.leagueId = null;
             state.selectedTeam = null;
-            localStorage.removeItem('razzball_league_id');
-            localStorage.removeItem('razzball_selected_team');
+            ls.remove('razzball_league_id');
+            ls.remove('razzball_selected_team');
             setLoadingState(false);
             showSetupScreen('upload');
             showStatus(
@@ -958,7 +965,7 @@ function closeSettingsModal() {
     const apiKeyInput = document.getElementById('settings-api-key');
     if (!apiKeyInput.readOnly && apiKeyInput.value.startsWith('sk-')) {
         state.apiKey = apiKeyInput.value;
-        localStorage.setItem('razzball_api_key', apiKeyInput.value);
+        ls.set('razzball_api_key', apiKeyInput.value);
         // Update message counter to show unlimited
         updateMessageCounter(null);
     }
@@ -972,10 +979,10 @@ function handleClearData() {
         state.conversationHistory = [];
 
         // Clear localStorage
-        localStorage.removeItem('razzball_api_key');
-        localStorage.removeItem('razzball_league_id');
-        localStorage.removeItem('razzball_selected_team');
-        localStorage.removeItem('razzball_league_type');
+        ls.remove('razzball_api_key');
+        ls.remove('razzball_league_id');
+        ls.remove('razzball_selected_team');
+        ls.remove('razzball_league_type');
 
         // Close modal and go back to setup
         closeSettingsModal();
