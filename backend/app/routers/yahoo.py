@@ -176,6 +176,7 @@ async def yahoo_auth():
         f"&redirect_uri={redirect_uri}"
         f"&response_type=code"
         f"&language=en-us"
+        f"&scope=fspt-r"
     )
     return RedirectResponse(url=auth_url)
 
@@ -205,42 +206,62 @@ async def yahoo_callback(
         print(f"[YAHOO] Token exchange FAILED: {e}", flush=True)
         raise
 
-    # Get user's MLB leagues — try all available MLB games to find league keys
+    # Get user's MLB leagues — try multiple approaches
     league_keys = []
+    league_error = ''
+
+    # Attempt 1: is_available filter
     try:
         leagues_url = f"{YAHOO_API_BASE}/users;use_login=1/games;is_available=1;game_codes=mlb/leagues"
-        print(f"[YAHOO] Fetching leagues: {leagues_url}", flush=True)
+        print(f"[YAHOO] Attempt 1: {leagues_url}", flush=True)
         xml_root = _yahoo_api_get(leagues_url, access_token)
         raw_xml = ET.tostring(xml_root, encoding='unicode')
-        print(f"[YAHOO] Leagues XML (first 2000 chars): {raw_xml[:2000]}", flush=True)
+        print(f"[YAHOO] Attempt 1 XML: {raw_xml[:3000]}", flush=True)
         for league_el in xml_root.iter('{http://fantasysports.yahooapis.com/fantasy/v2/base.rng}league_key'):
             league_keys.append(league_el.text)
-        print(f"[YAHOO] Found league keys: {league_keys}", flush=True)
+        print(f"[YAHOO] Attempt 1 keys: {league_keys}", flush=True)
     except Exception as e:
-        print(f"[YAHOO] Leagues fetch error: {e}", flush=True)
+        league_error = getattr(e, 'detail', str(e))
+        print(f"[YAHOO] Attempt 1 error: {league_error}", flush=True)
 
-    # Fallback: try without is_available filter
+    # Attempt 2: no is_available filter
     if not league_keys:
         try:
             leagues_url2 = f"{YAHOO_API_BASE}/users;use_login=1/games;game_codes=mlb/leagues"
-            print(f"[YAHOO] Fallback fetch: {leagues_url2}", flush=True)
+            print(f"[YAHOO] Attempt 2: {leagues_url2}", flush=True)
             xml_root2 = _yahoo_api_get(leagues_url2, access_token)
             raw_xml2 = ET.tostring(xml_root2, encoding='unicode')
-            print(f"[YAHOO] Fallback XML (first 2000 chars): {raw_xml2[:2000]}", flush=True)
+            print(f"[YAHOO] Attempt 2 XML: {raw_xml2[:3000]}", flush=True)
             for league_el in xml_root2.iter('{http://fantasysports.yahooapis.com/fantasy/v2/base.rng}league_key'):
                 league_keys.append(league_el.text)
-            print(f"[YAHOO] Fallback league keys: {league_keys}", flush=True)
+            print(f"[YAHOO] Attempt 2 keys: {league_keys}", flush=True)
         except Exception as e:
-            print(f"[YAHOO] Fallback leagues fetch error: {e}", flush=True)
+            league_error = getattr(e, 'detail', str(e))
+            print(f"[YAHOO] Attempt 2 error: {league_error}", flush=True)
 
-    # Redirect back to site with tokens and league keys in URL fragment
-    # (frontend picks these up and stores them)
+    # Attempt 3: fetch all user games (no sport filter) — reveals what Yahoo actually sees
+    if not league_keys:
+        try:
+            all_games_url = f"{YAHOO_API_BASE}/users;use_login=1/games/leagues"
+            print(f"[YAHOO] Attempt 3 (all games): {all_games_url}", flush=True)
+            xml_root3 = _yahoo_api_get(all_games_url, access_token)
+            raw_xml3 = ET.tostring(xml_root3, encoding='unicode')
+            print(f"[YAHOO] Attempt 3 XML: {raw_xml3[:3000]}", flush=True)
+            for league_el in xml_root3.iter('{http://fantasysports.yahooapis.com/fantasy/v2/base.rng}league_key'):
+                league_keys.append(league_el.text)
+            print(f"[YAHOO] Attempt 3 keys: {league_keys}", flush=True)
+        except Exception as e:
+            league_error = getattr(e, 'detail', str(e))
+            print(f"[YAHOO] Attempt 3 error: {league_error}", flush=True)
+
     frontend_url = getattr(settings, 'FRONTEND_URL', 'https://razzball.com')
     token_param = base64.b64encode(f"{access_token}:{refresh_token}".encode()).decode()
     leagues_param = ','.join(league_keys)
 
     redirect_url = f"{frontend_url}?yahoo_token={quote(token_param, safe='')}&yahoo_leagues={leagues_param}"
-    print(f"[YAHOO] Redirecting to: {frontend_url}?yahoo_token=***&yahoo_leagues={leagues_param}", flush=True)
+    if not league_keys and league_error:
+        redirect_url += f"&yahoo_error={quote(str(league_error)[:150], safe='')}"
+    print(f"[YAHOO] Redirecting, leagues={leagues_param}, error={league_error}", flush=True)
     return RedirectResponse(url=redirect_url)
 
 

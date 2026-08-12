@@ -555,7 +555,11 @@ async function handleYahooCallback() {
     showSetupScreen('upload');
 
     if (!leagueKeys.length) {
-        showStatus(statusEl, 'No Yahoo MLB leagues found for your account.', 'error');
+        const yahooError = params.get('yahoo_error');
+        const msg = yahooError
+            ? `Yahoo error: ${yahooError}`
+            : 'No Yahoo MLB leagues found for your account.';
+        showStatus(statusEl, msg, 'error');
         return;
     }
 
