@@ -176,7 +176,7 @@ async def yahoo_auth():
         f"&redirect_uri={redirect_uri}"
         f"&response_type=code"
         f"&language=en-us"
-        f"&scope=fspt-r"
+        f"&scope=fspt-w"
     )
     return RedirectResponse(url=auth_url)
 
@@ -202,6 +202,8 @@ async def yahoo_callback(
         access_token = token_data['access_token']
         refresh_token = token_data.get('refresh_token', '')
         print(f"[YAHOO] Token exchange SUCCESS, token starts: {access_token[:20]}...", flush=True)
+        print(f"[YAHOO] Token scopes: {token_data.get('scope', 'NOT SET')}", flush=True)
+        print(f"[YAHOO] Token xoauth_yahoo_guid: {token_data.get('xoauth_yahoo_guid', 'N/A')}", flush=True)
     except Exception as e:
         print(f"[YAHOO] Token exchange FAILED: {e}", flush=True)
         raise
