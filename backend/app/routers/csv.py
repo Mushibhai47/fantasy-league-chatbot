@@ -48,6 +48,16 @@ async def upload_csv(
         sport = 'nfl' if league_type == 'fantrax_nfl' else 'mlb'
         if force_sport in ('nfl', 'mlb'):
             sport = force_sport
+
+        # Debug log — helps diagnose parsing issues
+        owned_debug = [p for p in players_data if p.get('owner') != 'Free Agent']
+        teams_debug = sorted(set(p.get('owner', '') for p in owned_debug))
+        print(f"[CSV] file={file.filename} detected={league_type} force_sport={force_sport} sport={sport} "
+              f"total={len(players_data)} owned={len(owned_debug)} teams={teams_debug[:8]}", flush=True)
+        if players_data:
+            first = players_data[0]
+            print(f"[CSV] first_row owner={first.get('owner')!r} pos={first.get('position')!r} "
+                  f"id={str(first.get('fantrax_id',''))[:12]!r}", flush=True)
         # Normalize NFL fantrax type to 'fantrax' for storage
         stored_league_type = 'fantrax' if league_type == 'fantrax_nfl' else league_type
 
