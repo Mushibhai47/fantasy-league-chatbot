@@ -10,6 +10,78 @@ const ls = {
     remove: (k) => { try { ls.remove(k); } catch(e) {} }
 };
 
+// NFL custom scoring field definitions (matches Rudy's spreadsheet)
+const NFL_SCORING_FIELDS = [
+    { cat:'Passing',   label:'Passing Yards',       key:'pass_yds',          std:0.04 },
+    { cat:'Passing',   label:'Passing TD',           key:'pass_td',           std:4    },
+    { cat:'Passing',   label:'Interception',         key:'int',               std:-2   },
+    { cat:'Passing',   label:'2-PT Conv. Pass',      key:'pass_tpc',          std:2    },
+    { cat:'Passing',   label:'300-yd Bonus',         key:'yards_passing_300', std:0    },
+    { cat:'Passing',   label:'400-yd Bonus',         key:'yards_passing_400', std:0    },
+    { cat:'Rushing',   label:'Rushing Yards',        key:'rush_yds',          std:0.1  },
+    { cat:'Rushing',   label:'Rushing TD',           key:'run_td',            std:6    },
+    { cat:'Rushing',   label:'2-PT Conv. Rush',      key:'rush_tpc',          std:2    },
+    { cat:'Rushing',   label:'Fumble Lost',          key:'fum_lost',          std:-2   },
+    { cat:'Receiving', label:'Receptions',           key:'rec',               std:0    },
+    { cat:'Receiving', label:'Receiving Yards',      key:'rec_yds',           std:0.1  },
+    { cat:'Receiving', label:'Receiving TD',         key:'rec_td',            std:6    },
+    { cat:'Receiving', label:'2-PT Conv. Rec',       key:'rec_tpc',           std:2    },
+    { cat:'Kicking',   label:'XP Made',              key:'xp',                std:1    },
+    { cat:'Kicking',   label:'Field Goals',          key:'fg',                std:3    },
+    { cat:'Kicking',   label:'FG 50+',               key:'50+_fg_made',       std:0    },
+    { cat:'Defense',   label:'Sack',                 key:'sacks_def',         std:1    },
+    { cat:'Defense',   label:'Interception',         key:'int_def',           std:2    },
+    { cat:'Defense',   label:'Fumble Recovery',      key:'fum_def_recovered', std:2    },
+    { cat:'Defense',   label:'Safety',               key:'saf',               std:2    },
+    { cat:'Defense',   label:'Defensive TD',         key:'td_def_return',     std:6    },
+    { cat:'Defense',   label:'PA: 0',                key:'Points_Zero',       std:5    },
+    { cat:'Defense',   label:'PA: 1-6',              key:'Points_1to6',       std:4    },
+    { cat:'Defense',   label:'PA: 7-13',             key:'Points_7to13',      std:3    },
+    { cat:'Defense',   label:'PA: 14-20',            key:'Points_14to20',     std:1    },
+    { cat:'Defense',   label:'PA: 21-27',            key:'Points_21to27',     std:0    },
+    { cat:'Defense',   label:'PA: 28-34',            key:'Points_28to34',     std:-1   },
+    { cat:'Defense',   label:'PA: 35+',              key:'Points_35+',        std:-3   },
+    { cat:'IDP',       label:'Solo Tackle',          key:'tackles_solo',      std:1    },
+    { cat:'IDP',       label:'Assisted Tackle',      key:'tackles_ast',       std:0.5  },
+    { cat:'IDP',       label:'Forced Fumble',        key:'fum_def',           std:2    },
+    { cat:'IDP',       label:'Pass Defended',        key:'pass_def',          std:1    },
+];
+
+function buildCustomScoringPanel() {
+    const container = document.getElementById('custom-scoring-fields');
+    if (!container) return;
+    container.innerHTML = '';
+    const weights = state.nflCustomWeights || {};
+    let currentCat = '';
+    NFL_SCORING_FIELDS.forEach(f => {
+        if (f.cat !== currentCat) {
+            currentCat = f.cat;
+            const hdr = document.createElement('div');
+            hdr.style.cssText = 'font-weight:700;font-size:11px;text-transform:uppercase;color:#888;margin:10px 0 4px;letter-spacing:0.5px;';
+            hdr.textContent = f.cat;
+            container.appendChild(hdr);
+        }
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;';
+        const lbl = document.createElement('span');
+        lbl.style.cssText = 'font-size:12px;color:#333;flex:1;';
+        lbl.textContent = f.label;
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.step = '0.5';
+        inp.style.cssText = 'width:64px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:12px;text-align:right;';
+        inp.value = weights[f.key] !== undefined ? weights[f.key] : f.std;
+        inp.dataset.key = f.key;
+        inp.addEventListener('input', () => {
+            if (!state.nflCustomWeights) state.nflCustomWeights = {};
+            state.nflCustomWeights[f.key] = parseFloat(inp.value) || 0;
+        });
+        row.appendChild(lbl);
+        row.appendChild(inp);
+        container.appendChild(row);
+    });
+}
+
 // Configuration
 const API_BASE_URL = window.location.hostname === 'localhost'
     ? 'http://localhost:8000/api'
@@ -25,6 +97,7 @@ const state = {
     selectedLeagueType: 'MLB12',  // Projection league type (MLB12, MLB15, etc.)
     sport: 'mlb',                 // 'mlb' or 'nfl'
     nflScoringPreset: 'half_ppr', // NFL scoring preset
+    nflCustomWeights: null,       // custom scoring overrides (only used when preset='custom')
     conversationHistory: [],
     messagesRemaining: null,
     dailyLimit: 7
@@ -195,6 +268,17 @@ function setupEventListeners() {
         ls.set('razzball_league_type', state.selectedLeagueType);
     });
 
+    // NFL scoring preset selector — show/hide custom panel
+    document.getElementById('nfl-scoring-preset-selector')?.addEventListener('change', (e) => {
+        state.nflScoringPreset = e.target.value;
+        ls.set('razzball_nfl_scoring_preset', e.target.value);
+        const panel = document.getElementById('custom-scoring-panel');
+        if (panel) {
+            panel.style.display = e.target.value === 'custom' ? 'block' : 'none';
+            if (e.target.value === 'custom') buildCustomScoringPanel();
+        }
+    });
+
     // Settings modal
     document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
     document.getElementById('close-modal-btn').addEventListener('click', closeSettingsModal);
@@ -349,7 +433,14 @@ function updateReadyScreenForSport() {
         if (nflSection) nflSection.style.display = 'block';
         // Pre-select saved preset
         const presetSel = document.getElementById('nfl-scoring-preset-selector');
-        if (presetSel) presetSel.value = state.nflScoringPreset || 'half_ppr';
+        if (presetSel) {
+            presetSel.value = state.nflScoringPreset || 'half_ppr';
+            const panel = document.getElementById('custom-scoring-panel');
+            if (panel) {
+                panel.style.display = state.nflScoringPreset === 'custom' ? 'block' : 'none';
+                if (state.nflScoringPreset === 'custom') buildCustomScoringPanel();
+            }
+        }
     } else {
         if (mlbSection) mlbSection.style.display = 'block';
         if (nflSection) nflSection.style.display = 'none';
@@ -719,6 +810,7 @@ async function handleSendMessage() {
             user_api_key: state.apiKey || null,
             selected_team: state.selectedTeam || null,
             scoring_preset: state.nflScoringPreset || 'half_ppr',
+            scoring_weights: (state.nflScoringPreset === 'custom' && state.nflCustomWeights) ? state.nflCustomWeights : null,
             conversation_history: state.conversationHistory.slice(-12)
         } : {
             message: message,

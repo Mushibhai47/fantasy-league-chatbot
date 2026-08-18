@@ -7,40 +7,55 @@ from typing import Dict, Optional
 # so the same formula applies: probability * user's bonus points value.
 DEFAULT_WEIGHTS: Dict[str, float] = {
     # Passing
-    "pass_yds":         0.04,
-    "pass_td":          4.0,
-    "int":             -2.0,
-    "pass_tpc":         2.0,   # 2-pt conversion pass
-    "cmp":              0.0,   # completions (0 by default)
-    # Passing bonuses (API returns probability of hitting threshold)
-    "yards_passing_300": 0.0,
-    "yards_passing_400": 0.0,
+    "pass_yds":           0.04,
+    "pass_td":            4.0,
+    "int":               -2.0,
+    "pass_tpc":           2.0,
+    "cmp":                0.0,
+    "yards_passing_300":  0.0,
+    "yards_passing_400":  0.0,
     # Rushing
-    "rush_yds":         0.1,
-    "run_td":           6.0,
-    "rush_tpc":         2.0,   # 2-pt conversion rush
-    "fum_lost":        -2.0,
-    # Rushing bonuses
-    "yards_rushing_100": 0.0,
-    "yards_rushing_150": 0.0,
+    "rush_yds":           0.1,
+    "run_td":             6.0,
+    "rush_tpc":           2.0,
+    "fum_lost":          -2.0,
+    "yards_rushing_100":  0.0,
+    "yards_rushing_150":  0.0,
     # Receiving
-    "rec":              0.0,   # 0=standard, 0.5=half-PPR, 1.0=PPR
-    "rec_yds":          0.1,
-    "rec_td":           6.0,
-    "rec_tpc":          2.0,   # 2-pt conversion reception
-    # Receiving bonuses
+    "rec":                0.0,   # 0=STD, 0.5=half-PPR, 1.0=PPR
+    "rec_yds":            0.1,
+    "rec_td":             6.0,
+    "rec_tpc":            2.0,
     "yards_receiving_100": 0.0,
     "yards_receiving_150": 0.0,
     # Kicking
-    "xp":               1.0,
-    "fg":               3.0,
-    "10-19_fg_made":    0.0,
-    "20-29_fg_made":    0.0,
-    "30-39_fg_made":    0.0,
-    "40-49_fg_made":    0.0,
-    "50+_fg_made":      0.0,
-    "xp_missed":        0.0,   # computed as xpa - xp
-    "fg_missed":        0.0,   # computed as fga - fg
+    "xp":                 1.0,
+    "fg":                 3.0,
+    "10-19_fg_made":      0.0,
+    "20-29_fg_made":      0.0,
+    "30-39_fg_made":      0.0,
+    "40-49_fg_made":      0.0,
+    "50+_fg_made":        0.0,
+    "xp_missed":          0.0,
+    "fg_missed":          0.0,
+    # Defense / Special Teams
+    "sacks_def":          1.0,
+    "int_def":            2.0,
+    "fum_def_recovered":  2.0,
+    "saf":                2.0,
+    "td_def_return":      6.0,
+    "Points_Zero":        5.0,
+    "Points_1to6":        4.0,
+    "Points_7to13":       3.0,
+    "Points_14to20":      1.0,
+    "Points_21to27":      0.0,
+    "Points_28to34":     -1.0,
+    "Points_35+":        -3.0,
+    # IDP
+    "tackles_solo":       1.0,
+    "tackles_ast":        0.5,
+    "fum_def":            2.0,
+    "pass_def":           1.0,
 }
 
 # ── Named presets ──────────────────────────────────────────────────────────
@@ -48,10 +63,10 @@ def _preset(rec: float) -> Dict[str, float]:
     return {**DEFAULT_WEIGHTS, "rec": rec}
 
 PRESET_PROFILES = {
-    "standard":            _preset(0.0),
-    "half_ppr":            _preset(0.5),
-    "ppr":                 _preset(1.0),
-    "superflex_half_ppr":  _preset(0.5),
+    "standard":   _preset(0.0),
+    "half_ppr":   _preset(0.5),
+    "ppr":        _preset(1.0),
+    "custom":     _preset(0.0),   # custom starts from STD; frontend sends overrides via scoring_weights
 }
 
 

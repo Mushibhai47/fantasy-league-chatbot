@@ -10,7 +10,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'RAZZBOT_VERSION',    '1.1.1' );
+define( 'RAZZBOT_VERSION',    '1.1.2' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // ─── Enqueue CSS & JS only on the page that uses the shortcode ──────────────
@@ -165,11 +165,16 @@ function razzball_chatbot_shortcode( $atts ) {
                     <div id="nfl-scoring-section" class="input-group" style="display: none; margin-bottom: 16px;">
                         <label style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #555;">Scoring Format</label>
                         <select id="nfl-scoring-preset-selector" style="padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; width: 100%; background: white;">
-                            <option value="half_ppr">Half-PPR (default)</option>
-                            <option value="ppr">Full PPR</option>
+                            <option value="half_ppr">Half PPR (default)</option>
                             <option value="standard">Standard (no PPR)</option>
-                            <option value="superflex_half_ppr">Superflex Half-PPR</option>
+                            <option value="ppr">Full PPR</option>
+                            <option value="custom">Custom</option>
                         </select>
+                    </div>
+                    <!-- Custom scoring editor — shown when Custom is selected -->
+                    <div id="custom-scoring-panel" style="display:none; margin-bottom:16px; border:1px solid #ddd; border-radius:8px; padding:12px; background:#f9f9f9; max-height:300px; overflow-y:auto;">
+                        <p style="font-size:12px; color:#666; margin:0 0 10px;">Edit point values below (starts from Standard defaults):</p>
+                        <div id="custom-scoring-fields"></div>
                     </div>
                     <button id="start-chat-btn" class="btn btn-primary btn-large">Start Chatting</button>
                 </div>
