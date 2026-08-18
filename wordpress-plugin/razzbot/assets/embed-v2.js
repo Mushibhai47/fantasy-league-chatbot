@@ -484,6 +484,10 @@ async function uploadFile(file) {
         if (filename.includes('nfbc')) leagueType = 'nfbc';
 
         formData.append('league_type', leagueType);
+        // Tell backend which sport this site is locked to
+        if (window.razzbotForceSport) {
+            formData.append('force_sport', window.razzbotForceSport);
+        }
 
         const response = await fetch(`${API_BASE_URL}/csv/upload`, {
             method: 'POST',

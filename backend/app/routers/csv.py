@@ -18,6 +18,7 @@ router = APIRouter()
 async def upload_csv(
     file: UploadFile = File(...),
     existing_league_id: Optional[str] = Form(None),
+    force_sport: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -43,8 +44,10 @@ async def upload_csv(
         parser = CSVParser()
         players_data, league_type = parser.parse_csv(tmp_file_path)
 
-        # Determine sport from detected league type
+        # Determine sport: backend detection first, then frontend force_sport override
         sport = 'nfl' if league_type == 'fantrax_nfl' else 'mlb'
+        if force_sport in ('nfl', 'mlb'):
+            sport = force_sport
         # Normalize NFL fantrax type to 'fantrax' for storage
         stored_league_type = 'fantrax' if league_type == 'fantrax_nfl' else league_type
 
