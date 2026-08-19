@@ -45,7 +45,7 @@ async def upload_csv(
         players_data, league_type = parser.parse_csv(tmp_file_path)
 
         # Determine sport: backend detection first, then frontend force_sport override
-        sport = 'nfl' if league_type == 'fantrax_nfl' else 'mlb'
+        sport = 'nfl' if league_type in ('fantrax_nfl', 'nfbc_nfl') else 'mlb'
         if force_sport in ('nfl', 'mlb'):
             sport = force_sport
 
@@ -58,8 +58,14 @@ async def upload_csv(
             first = players_data[0]
             print(f"[CSV] first_row owner={first.get('owner')!r} pos={first.get('position')!r} "
                   f"id={str(first.get('fantrax_id',''))[:12]!r}", flush=True)
-        # Normalize NFL fantrax type to 'fantrax' for storage
-        stored_league_type = 'fantrax' if league_type == 'fantrax_nfl' else league_type
+
+        # Normalize storage type (strip nfl suffix)
+        if league_type == 'fantrax_nfl':
+            stored_league_type = 'fantrax'
+        elif league_type == 'nfbc_nfl':
+            stored_league_type = 'nfbc'
+        else:
+            stored_league_type = league_type
 
         # If re-uploading, delete old rosters and league to prevent accumulation
         user = None

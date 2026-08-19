@@ -8,25 +8,37 @@ class CSVParser:
     """Parse fantasy league CSV files"""
 
     # NFL positions — none overlap with MLB positions
-    _NFL_POSITIONS = {'QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DST', 'DB', 'DL', 'LB', 'DT', 'DE', 'S', 'CB'}
-    _MLB_POSITIONS = {'SP', 'RP', 'OF', '1B', '2B', '3B', 'SS', 'C', 'DH', 'P', 'MI', 'CI', 'UTIL'}
+    _NFL_POSITIONS = {'QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DST', 'DB', 'DL', 'LB', 'DT', 'DE', 'S', 'CB', 'FS', 'SS', 'OLB', 'ILB', 'MLB', 'NT', 'OT', 'G', 'C', 'OP', 'FLEX', 'W/R', 'W/R/T', 'W/T', 'Q/W/R/T'}
+    _MLB_POSITIONS = {'SP', 'RP', 'OF', '1B', '2B', '3B', 'DH', 'P', 'MI', 'CI', 'UTIL'}
+
+    @staticmethod
+    def _positions_are_nfl(df: pd.DataFrame, col_name: str) -> bool:
+        """Return True if given column contains NFL positions and no MLB positions."""
+        pos_cols = [col for col in df.columns if col.lower().strip() == col_name.lower()]
+        if not pos_cols:
+            return False
+        all_pos = set()
+        for val in df[pos_cols[0]].dropna().astype(str):
+            for p in re.split(r'[/,\s]+', val.upper().strip()):
+                if p:
+                    all_pos.add(p)
+        nfl_hits = all_pos & CSVParser._NFL_POSITIONS
+        # Only block on real MLB-specific positions (removed SS/C which overlap with NFL)
+        mlb_only = {'SP', 'RP', 'OF', '1B', '2B', '3B', 'DH', 'P', 'MI', 'CI'}
+        mlb_hits = all_pos & mlb_only
+        return len(nfl_hits) > 0 and len(mlb_hits) == 0
 
     @staticmethod
     def _is_nfl_fantrax(df: pd.DataFrame) -> bool:
-        """Return True if Fantrax CSV contains NFL roster (positions like QB/RB/WR/TE)."""
-        pos_cols = [col for col in df.columns if col.lower().strip() == 'position']
-        if not pos_cols:
-            return False
-        positions = set(df[pos_cols[0]].dropna().astype(str).str.upper().str.strip().unique())
-        nfl_hits = positions & CSVParser._NFL_POSITIONS
-        mlb_hits = positions & CSVParser._MLB_POSITIONS
-        return len(nfl_hits) > 0 and len(mlb_hits) == 0
+        """Return True if Fantrax CSV contains NFL roster."""
+        return (CSVParser._positions_are_nfl(df, 'Position') or
+                CSVParser._positions_are_nfl(df, 'Pos'))
 
     @staticmethod
     def detect_league_type(df: pd.DataFrame) -> str:
         """
         Detect which league platform the CSV is from.
-        Returns: 'fantrax', 'fantrax_nfl', 'cbs', 'nfbc', or 'unknown'
+        Returns: 'fantrax', 'fantrax_nfl', 'cbs', 'nfbc', 'nfbc_nfl', or 'unknown'
         """
         columns = [col.lower().strip() for col in df.columns]
 
@@ -42,8 +54,10 @@ class CSVParser:
         if 'avail' in columns:
             return 'cbs'
 
-        # NFBC has 'Owner' column and numeric 'id'
+        # NFBC/NFFC has 'Owner' column and numeric 'id'
         if 'owner' in columns and 'id' in columns:
+            if CSVParser._positions_are_nfl(df, 'Pos') or CSVParser._positions_are_nfl(df, 'Position'):
+                return 'nfbc_nfl'
             return 'nfbc'
 
         return 'unknown'
@@ -272,6 +286,8 @@ class CSVParser:
             players = CSVParser.parse_fantrax_nfl(file_path)
         elif league_type == 'fantrax':
             players = CSVParser.parse_fantrax(file_path)
+        elif league_type in ('nfbc_nfl',):
+            players = CSVParser.parse_nfbc(file_path)
         elif league_type == 'cbs':
             players = CSVParser.parse_cbs(file_path)
         elif league_type == 'nfbc':
