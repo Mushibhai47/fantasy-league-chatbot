@@ -54,14 +54,18 @@ def _resolve_weights(req: NFLChatRequest) -> Dict[str, float]:
     return PRESET_PROFILES["half_ppr"]
 
 
-def _match_player(player: Player, fantrax_lkp: dict, yahoo_lkp: dict) -> Optional[dict]:
-    """Find a player's projection row by fantrax_id, then yahoo_id."""
+def _match_player(player: Player, fantrax_lkp: dict, yahoo_lkp: dict, nfbc_lkp: dict = None) -> Optional[dict]:
+    """Find a player's projection row by fantrax_id, yahoo_id, or nfbc_id."""
     if player.fantrax_id:
         proj = fantrax_lkp.get(player.fantrax_id.strip())
         if proj:
             return proj
     if player.yahoo_id:
         proj = yahoo_lkp.get(str(player.yahoo_id).strip())
+        if proj:
+            return proj
+    if nfbc_lkp and player.nfbc_id:
+        proj = nfbc_lkp.get(str(player.nfbc_id).strip())
         if proj:
             return proj
     return None
@@ -209,7 +213,7 @@ def _position_table(pos_group: str, players_with_proj: list, label: str = "") ->
 # ── Hard-coded report generators ─────────────────────────────────────────────
 
 def generate_league_overview(
-    owned_rosters, ros_fantrax, ros_yahoo, weights: dict, all_teams: List[str]
+    owned_rosters, ros_fantrax, ros_yahoo, weights: dict, all_teams: List[str], ros_nfbc: dict = None
 ) -> str:
     """Rank all teams by total ROS custom_pts."""
     team_pts: Dict[str, float] = {}
@@ -220,7 +224,7 @@ def generate_league_overview(
         if not player:
             continue
         owner = roster.team_owner
-        proj = _match_player(player, ros_fantrax, ros_yahoo)
+        proj = _match_player(player, ros_fantrax, ros_yahoo, ros_nfbc)
         pts = calc_points(proj, weights) if proj else 0.0
         pos_grp = _pos_group(player.position or "")
 
@@ -247,7 +251,7 @@ def generate_league_overview(
 
 def generate_team_overview(
     target_team: str, owned_rosters, ros_fantrax, ros_yahoo,
-    weights: dict, all_teams: List[str]
+    weights: dict, all_teams: List[str], ros_nfbc: dict = None
 ) -> str:
     """Show one team's full roster, grouped by position."""
     matched = _find_team(target_team, all_teams)
@@ -262,7 +266,7 @@ def generate_team_overview(
         player = roster.player
         if not player:
             continue
-        proj = _match_player(player, ros_fantrax, ros_yahoo)
+        proj = _match_player(player, ros_fantrax, ros_yahoo, ros_nfbc)
         pts = calc_points(proj, weights) if proj else 0.0
         pg = _pos_group(player.position or "")
         p_dict = {
@@ -342,7 +346,7 @@ def generate_pickups_report(
 
 def generate_start_sit(
     target_team: str, owned_rosters, weekly_fantrax, weekly_yahoo,
-    weights: dict, all_teams: List[str], week_label: str = "This Week"
+    weights: dict, all_teams: List[str], week_label: str = "This Week", weekly_nfbc: dict = None
 ) -> str:
     """Show user's team weekly projections sorted by custom_pts."""
     matched = _find_team(target_team, all_teams)
@@ -356,7 +360,7 @@ def generate_start_sit(
         player = roster.player
         if not player:
             continue
-        proj = _match_player(player, weekly_fantrax, weekly_yahoo)
+        proj = _match_player(player, weekly_fantrax, weekly_yahoo, weekly_nfbc)
         pts = calc_points(proj, weights) if proj else 0.0
         pg = _pos_group(player.position or "")
         p_dict = {
@@ -428,11 +432,13 @@ async def nfl_chat(
     ros_proj = nfl_svc.get_ros_projections()
     ros_fantrax = nfl_svc.build_fantrax_lookup(ros_proj)
     ros_yahoo = nfl_svc.build_yahoo_lookup(ros_proj)
+    ros_nfbc = nfl_svc.build_nfbc_lookup(ros_proj)
 
     week = request.week
     weekly_proj, weekly_label = nfl_svc.get_best_weekly_projections(week)
     weekly_fantrax = nfl_svc.build_fantrax_lookup(weekly_proj)
     weekly_yahoo = nfl_svc.build_yahoo_lookup(weekly_proj)
+    weekly_nfbc = nfl_svc.build_nfbc_lookup(weekly_proj)
 
     # ── Detect intent and generate hard-coded reports ─────────────────────
     msg_lower = request.message.lower()
@@ -442,18 +448,17 @@ async def nfl_chat(
 
     if any(k in msg_lower for k in ("league overview", "league rank", "standings")):
         hard_coded = generate_league_overview(
-            owned_rosters, ros_fantrax, ros_yahoo, weights, all_teams
+            owned_rosters, ros_fantrax, ros_yahoo, weights, all_teams, ros_nfbc=ros_nfbc
         )
 
     elif any(k in msg_lower for k in ("team overview",)):
         team_name = selected_team or all_teams[0] if all_teams else ""
-        # Try to extract a team name from the message
         for t in all_teams:
             if t.lower().lstrip("@") in msg_lower or t.lower() in msg_lower:
                 team_name = t
                 break
         hard_coded = generate_team_overview(
-            team_name, owned_rosters, ros_fantrax, ros_yahoo, weights, all_teams
+            team_name, owned_rosters, ros_fantrax, ros_yahoo, weights, all_teams, ros_nfbc=ros_nfbc
         )
 
     elif any(k in msg_lower for k in ("ros pickup", "ros pickups", "ros waiver", "best available ros")):
@@ -474,7 +479,7 @@ async def nfl_chat(
                 break
         hard_coded = generate_start_sit(
             team_name, owned_rosters, weekly_fantrax, weekly_yahoo,
-            weights, all_teams, week_label=weekly_label
+            weights, all_teams, week_label=weekly_label, weekly_nfbc=weekly_nfbc
         )
 
     # ── Build context for GPT ─────────────────────────────────────────────
@@ -493,7 +498,7 @@ async def nfl_chat(
         if not player:
             continue
         owner = roster.team_owner
-        proj = _match_player(player, ros_fantrax, ros_yahoo)
+        proj = _match_player(player, ros_fantrax, ros_yahoo, ros_nfbc)
         pts = calc_points(proj, weights) if proj else 0.0
         pg = _pos_group(player.position or "")
         entry = f"{player.name} ({pg}) {_f(pts)} pts"

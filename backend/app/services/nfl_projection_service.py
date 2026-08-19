@@ -126,6 +126,16 @@ def build_yahoo_lookup(players: List[dict]) -> Dict[str, dict]:
     return lookup
 
 
+def build_nfbc_lookup(players: List[dict]) -> Dict[str, dict]:
+    """Return {id_nffc -> player_row} for NFBC/NFFC league matching."""
+    lookup = {}
+    for p in players:
+        nid = str(p.get("id_nffc", "")).strip()
+        if nid and nid not in ("None", "0", ""):
+            lookup[nid] = p
+    return lookup
+
+
 def calc_custom_points(player_row: dict, scoring: dict) -> float:
     """
     Calculate fantasy points from raw stat projections using a custom scoring dict.
