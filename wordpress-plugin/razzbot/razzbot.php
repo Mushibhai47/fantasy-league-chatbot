@@ -10,7 +10,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'RAZZBOT_VERSION',    '1.1.2' );
+define( 'RAZZBOT_VERSION',    '1.1.3' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // ─── Enqueue CSS & JS only on the page that uses the shortcode ──────────────
@@ -276,6 +276,12 @@ function razzball_chatbot_shortcode( $atts ) {
                     </div>
                     <div class="setting-item">
                         <label>League Data</label>
+                        <?php if ( $is_nfl ) : ?>
+                        <button id="yahoo-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#6001d2; border-color:#6001d2;" onclick="window.location.href='https://valiant-healing-production-ce05.up.railway.app/api/yahoo/auth'">🏈 Connect Yahoo Fantasy League</button>
+                        <div id="yahoo-status" class="status-message"></div>
+                        <button id="reupload-btn" class="btn btn-secondary" style="width:100%; margin-top:8px;">Upload New CSV (Fantrax)</button>
+                        <p class="setting-description">Connect your Yahoo league or upload a Fantrax NFL CSV</p>
+                        <?php else : ?>
                         <button id="yahoo-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#6001d2; border-color:#6001d2;" onclick="window.location.href='https://valiant-healing-production-ce05.up.railway.app/api/yahoo/auth'">⚾ Connect Yahoo Fantasy League</button>
                         <div id="yahoo-status" class="status-message"></div>
                         <div style="margin-top:12px; padding-top:12px; border-top:1px solid #eee;">
@@ -290,6 +296,7 @@ function razzball_chatbot_shortcode( $atts ) {
                         </div>
                         <button id="reupload-btn" class="btn btn-secondary" style="width:100%; margin-top:12px;">Upload New CSV</button>
                         <p class="setting-description">Connect your Yahoo or ESPN league, or upload a CSV from Fantrax, CBS, or NFBC</p>
+                        <?php endif; ?>
                     </div>
                     <div class="setting-item">
                         <button id="clear-data-btn" class="btn btn-danger">Clear All Data</button>
