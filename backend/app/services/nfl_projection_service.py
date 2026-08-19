@@ -78,6 +78,34 @@ def get_weekly_projections(week: int) -> List[dict]:
     return _fetch_nfl(str(week))
 
 
+def _has_meaningful_data(players: List[dict]) -> bool:
+    """Return True if any of the first 20 players has non-zero projected stats."""
+    key_stats = ['pass_yds', 'rush_yds', 'rec_yds', 'pass_td', 'run_td', 'rec_td']
+    for p in players[:20]:
+        if any(float(p.get(s) or 0) > 0 for s in key_stats):
+            return True
+    return False
+
+
+def get_best_weekly_projections(week: int = None) -> tuple:
+    """
+    Return (projections, label).
+    Falls back to ROS when weekly data is empty (preseason / off-season).
+    """
+    if week:
+        proj = get_weekly_projections(week)
+        label = f"Week {week}"
+    else:
+        proj = get_weekly_projections(1)
+        label = "This Week"
+
+    if not _has_meaningful_data(proj):
+        proj = get_ros_projections()
+        label = "ROS (preseason — weekly projections not yet available)"
+
+    return proj, label
+
+
 def build_fantrax_lookup(players: List[dict]) -> Dict[str, dict]:
     """Return {fantrax_id -> player_row} for fast roster matching."""
     lookup = {}

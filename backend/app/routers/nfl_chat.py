@@ -291,15 +291,11 @@ def generate_pickups_report(
     week: Optional[int] = None
 ) -> str:
     """Best available FAs by position group (weekly or ROS)."""
-    label = "Weekly" if projection_type == "weekly" else "ROS"
-    if projection_type == "weekly" and week:
-        all_proj = nfl_svc.get_weekly_projections(week)
-        label = f"Week {week}"
-    elif projection_type == "weekly":
-        all_proj = nfl_svc.get_weekly_projections(1)
-        label = "Weekly"
+    if projection_type == "weekly":
+        all_proj, label = nfl_svc.get_best_weekly_projections(week)
     else:
         all_proj = nfl_svc.get_ros_projections()
+        label = "ROS"
 
     if not all_proj:
         return f"Could not fetch {label} projections. Try again shortly."
@@ -346,7 +342,7 @@ def generate_pickups_report(
 
 def generate_start_sit(
     target_team: str, owned_rosters, weekly_fantrax, weekly_yahoo,
-    weights: dict, all_teams: List[str], week: Optional[int] = None
+    weights: dict, all_teams: List[str], week_label: str = "This Week"
 ) -> str:
     """Show user's team weekly projections sorted by custom_pts."""
     matched = _find_team(target_team, all_teams)
@@ -373,8 +369,7 @@ def generate_start_sit(
     if not pos_buckets:
         return f"No players or projections found for team '{matched}'."
 
-    wk_str = f"Week {week}" if week else "This Week"
-    lines = [f"**Start/Sit: {matched} — {wk_str}**\n"]
+    lines = [f"**Start/Sit: {matched} — {week_label}**\n"]
     for pos in ["QB", "RB", "WR", "TE", "K", "DEF", "IDP"]:
         grp = pos_buckets.get(pos, [])
         if not grp:
@@ -435,7 +430,7 @@ async def nfl_chat(
     ros_yahoo = nfl_svc.build_yahoo_lookup(ros_proj)
 
     week = request.week
-    weekly_proj = nfl_svc.get_weekly_projections(week) if week else nfl_svc.get_weekly_projections(1)
+    weekly_proj, weekly_label = nfl_svc.get_best_weekly_projections(week)
     weekly_fantrax = nfl_svc.build_fantrax_lookup(weekly_proj)
     weekly_yahoo = nfl_svc.build_yahoo_lookup(weekly_proj)
 
@@ -479,7 +474,7 @@ async def nfl_chat(
                 break
         hard_coded = generate_start_sit(
             team_name, owned_rosters, weekly_fantrax, weekly_yahoo,
-            weights, all_teams, week=week
+            weights, all_teams, week_label=weekly_label
         )
 
     # ── Build context for GPT ─────────────────────────────────────────────
