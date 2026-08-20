@@ -10,7 +10,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'RAZZBOT_VERSION',    '1.1.3' );
+define( 'RAZZBOT_VERSION',    '1.1.4' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // ─── Enqueue CSS & JS only on the page that uses the shortcode ──────────────
@@ -274,13 +274,29 @@ function razzball_chatbot_shortcode( $atts ) {
                             <div style="font-size: 14px; color: #666;">Loading...</div>
                         </div>
                     </div>
+                    <?php if ( $is_nfl ) : ?>
+                    <div class="setting-item">
+                        <label>Scoring Format</label>
+                        <select id="settings-nfl-preset" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;font-size:14px;margin-bottom:8px;">
+                            <option value="half_ppr">Half PPR (default)</option>
+                            <option value="standard">Standard (no PPR)</option>
+                            <option value="ppr">Full PPR</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                        <div id="settings-custom-panel" style="display:none;border:1px solid #ddd;border-radius:8px;padding:12px;background:#f9f9f9;max-height:260px;overflow-y:auto;">
+                            <p style="font-size:12px;color:#666;margin:0 0 10px;">Edit point values (starts from Standard defaults):</p>
+                            <div id="settings-custom-fields"></div>
+                            <button id="settings-save-scoring-btn" class="btn btn-primary" style="width:100%;margin-top:10px;">Save Scoring</button>
+                        </div>
+                    </div>
+                    <?php endif; ?>
                     <div class="setting-item">
                         <label>League Data</label>
                         <?php if ( $is_nfl ) : ?>
                         <button id="yahoo-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#6001d2; border-color:#6001d2;" onclick="window.location.href='https://valiant-healing-production-ce05.up.railway.app/api/yahoo/auth'">🏈 Connect Yahoo Fantasy League</button>
                         <div id="yahoo-status" class="status-message"></div>
-                        <button id="reupload-btn" class="btn btn-secondary" style="width:100%; margin-top:8px;">Upload New CSV (Fantrax)</button>
-                        <p class="setting-description">Connect your Yahoo league or upload a Fantrax NFL CSV</p>
+                        <button id="reupload-btn" class="btn btn-secondary" style="width:100%; margin-top:8px;">Upload New CSV (Fantrax/NFBC)</button>
+                        <p class="setting-description">Connect your Yahoo league or upload a Fantrax/NFBC NFL CSV</p>
                         <?php else : ?>
                         <button id="yahoo-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#6001d2; border-color:#6001d2;" onclick="window.location.href='https://valiant-healing-production-ce05.up.railway.app/api/yahoo/auth'">⚾ Connect Yahoo Fantasy League</button>
                         <div id="yahoo-status" class="status-message"></div>

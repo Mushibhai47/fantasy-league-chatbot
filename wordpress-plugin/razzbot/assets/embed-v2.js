@@ -47,8 +47,8 @@ const NFL_SCORING_FIELDS = [
     { cat:'IDP',       label:'Pass Defended',        key:'pass_def',          std:1    },
 ];
 
-function buildCustomScoringPanel() {
-    const container = document.getElementById('custom-scoring-fields');
+function buildCustomScoringPanel(containerId) {
+    const container = document.getElementById(containerId || 'custom-scoring-fields');
     if (!container) return;
     container.innerHTML = '';
     const weights = state.nflCustomWeights || {};
@@ -75,6 +75,7 @@ function buildCustomScoringPanel() {
         inp.addEventListener('input', () => {
             if (!state.nflCustomWeights) state.nflCustomWeights = {};
             state.nflCustomWeights[f.key] = parseFloat(inp.value) || 0;
+            ls.set('razzball_nfl_custom_weights', JSON.stringify(state.nflCustomWeights));
         });
         row.appendChild(lbl);
         row.appendChild(inp);
@@ -268,7 +269,7 @@ function setupEventListeners() {
         ls.set('razzball_league_type', state.selectedLeagueType);
     });
 
-    // NFL scoring preset selector — show/hide custom panel
+    // NFL scoring preset selector (ready screen)
     document.getElementById('nfl-scoring-preset-selector')?.addEventListener('change', (e) => {
         state.nflScoringPreset = e.target.value;
         ls.set('razzball_nfl_scoring_preset', e.target.value);
@@ -277,6 +278,31 @@ function setupEventListeners() {
             panel.style.display = e.target.value === 'custom' ? 'block' : 'none';
             if (e.target.value === 'custom') buildCustomScoringPanel();
         }
+        // Keep settings panel in sync
+        const settingsSel = document.getElementById('settings-nfl-preset');
+        if (settingsSel) settingsSel.value = e.target.value;
+    });
+
+    // NFL scoring preset selector (Settings modal)
+    document.getElementById('settings-nfl-preset')?.addEventListener('change', (e) => {
+        state.nflScoringPreset = e.target.value;
+        ls.set('razzball_nfl_scoring_preset', e.target.value);
+        const panel = document.getElementById('settings-custom-panel');
+        if (panel) {
+            panel.style.display = e.target.value === 'custom' ? 'block' : 'none';
+            if (e.target.value === 'custom') buildCustomScoringPanel('settings-custom-fields');
+        }
+        // Keep ready screen in sync
+        const readySel = document.getElementById('nfl-scoring-preset-selector');
+        if (readySel) readySel.value = e.target.value;
+    });
+
+    // Save scoring button in Settings modal
+    document.getElementById('settings-save-scoring-btn')?.addEventListener('click', () => {
+        ls.set('razzball_nfl_scoring_preset', state.nflScoringPreset);
+        if (state.nflCustomWeights) ls.set('razzball_nfl_custom_weights', JSON.stringify(state.nflCustomWeights));
+        const btn = document.getElementById('settings-save-scoring-btn');
+        if (btn) { btn.textContent = 'Saved!'; setTimeout(() => { btn.textContent = 'Save Scoring'; }, 2000); }
     });
 
     // Settings modal
@@ -357,6 +383,12 @@ function loadSavedData() {
         state.nflScoringPreset = savedNflPreset;
         const presetSel = document.getElementById('nfl-scoring-preset-selector');
         if (presetSel) presetSel.value = savedNflPreset;
+    }
+
+    // Load saved custom weights
+    const savedWeights = ls.get('razzball_nfl_custom_weights');
+    if (savedWeights) {
+        try { state.nflCustomWeights = JSON.parse(savedWeights); } catch(e) {}
     }
 }
 
@@ -1055,6 +1087,21 @@ function openSettingsModal() {
                 <div style="width: ${percentage}%; height: 100%; background: ${color}; transition: width 0.3s;"></div>
             </div>
         `;
+    }
+
+    // NFL scoring — populate settings selector from current state
+    const settingsPreset = document.getElementById('settings-nfl-preset');
+    if (settingsPreset) {
+        settingsPreset.value = state.nflScoringPreset || 'half_ppr';
+        const customPanel = document.getElementById('settings-custom-panel');
+        if (customPanel) {
+            if (settingsPreset.value === 'custom') {
+                customPanel.style.display = 'block';
+                buildCustomScoringPanel('settings-custom-fields');
+            } else {
+                customPanel.style.display = 'none';
+            }
+        }
     }
 }
 
