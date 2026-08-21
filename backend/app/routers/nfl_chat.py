@@ -304,21 +304,39 @@ def generate_pickups_report(
     if not all_proj:
         return f"Could not fetch {label} projections. Try again shortly."
 
-    # Build owned fantrax_id set
-    owned_ids = set()
+    # Debug: log what keys the API actually returns (once per call)
+    if all_proj:
+        sample = all_proj[0]
+        print(f"[Pickups] API sample keys={list(sample.keys())[:20]}", flush=True)
+        print(f"[Pickups] sample pos fields: position={sample.get('position')!r} pos={sample.get('pos')!r}", flush=True)
+
+    # Build owned-player ID sets (fantrax + yahoo + nfbc)
+    owned_fantrax = set()
+    owned_yahoo = set()
+    owned_nfbc = set()
     for roster in owned_rosters:
         p = roster.player
-        if p and p.fantrax_id:
-            owned_ids.add(p.fantrax_id.strip())
+        if not p:
+            continue
+        if p.fantrax_id:
+            owned_fantrax.add(str(p.fantrax_id).strip())
+        if p.yahoo_id:
+            owned_yahoo.add(str(p.yahoo_id).strip())
+        if p.nfbc_id:
+            owned_nfbc.add(str(p.nfbc_id).strip())
 
     # Score and filter FAs
     fa_by_pos: Dict[str, list] = {}
     for proj in all_proj:
-        fid = proj.get("id_fantrax", "")
-        if fid and fid in owned_ids:
+        # Filter out owned players (try all three ID types)
+        fid = str(proj.get("id_fantrax") or "").strip()
+        yid = str(proj.get("id_yahoo") or "").strip()
+        nid = str(proj.get("id_nffc") or "").strip()
+        if (fid and fid in owned_fantrax) or (yid and yid in owned_yahoo) or (nid and nid in owned_nfbc):
             continue
-        pos = proj.get("position", "")
-        pg = _pos_group(pos)
+        # API may use "pos" or "position" — check both
+        pos = proj.get("position") or proj.get("pos") or ""
+        pg = _pos_group(str(pos).upper())
         if pg == "OTHER":
             continue
         pts = calc_points(proj, weights)
@@ -328,6 +346,8 @@ def generate_pickups_report(
             "custom_pts": pts,
         }
         fa_by_pos.setdefault(pg, []).append((p_dict, proj))
+
+    print(f"[Pickups] owned_fantrax={len(owned_fantrax)} fa_by_pos keys={list(fa_by_pos.keys())}", flush=True)
 
     if not fa_by_pos:
         return f"No FA projection data available for {label}."
