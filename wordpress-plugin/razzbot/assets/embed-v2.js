@@ -1051,7 +1051,10 @@ function setLoadingState(loading) {
 
 // Settings Modal
 function openSettingsModal() {
-    document.getElementById('settings-modal').classList.add('active');
+    const modal = document.getElementById('settings-modal');
+    modal.classList.add('active');
+    modal.style.display = 'flex';
+    modal.style.zIndex = '9999';
 
     // Load current API key (masked)
     const apiKeyInput = document.getElementById('settings-api-key');
@@ -1106,7 +1109,10 @@ function openSettingsModal() {
 }
 
 function closeSettingsModal() {
-    document.getElementById('settings-modal').classList.remove('active');
+    const modal = document.getElementById('settings-modal');
+    modal.classList.remove('active');
+    modal.style.display = 'none';
+    modal.style.zIndex = '';
 
     // Save any changes to API key
     const apiKeyInput = document.getElementById('settings-api-key');

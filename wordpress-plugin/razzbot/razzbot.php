@@ -10,7 +10,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'RAZZBOT_VERSION',    '1.1.4' );
+define( 'RAZZBOT_VERSION',    '1.1.5' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // ─── Enqueue CSS & JS only on the page that uses the shortcode ──────────────
@@ -187,7 +187,7 @@ function razzball_chatbot_shortcode( $atts ) {
                 <h3>Razzbot</h3>
                 <div class="header-actions">
                     <span id="league-indicator" class="league-badge">League Loaded</span>
-                    <button id="settings-btn" class="icon-btn" title="Settings">⚙️</button>
+                    <button id="settings-btn" class="icon-btn" title="Settings" onclick="openSettingsModal()">⚙️</button>
                 </div>
             </div>
 
