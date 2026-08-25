@@ -310,10 +310,11 @@ def generate_pickups_report(
         print(f"[Pickups] API sample keys={list(sample.keys())[:20]}", flush=True)
         print(f"[Pickups] sample pos fields: position={sample.get('position')!r} pos={sample.get('pos')!r}", flush=True)
 
-    # Build owned-player ID sets (fantrax + yahoo + nfbc)
+    # Build owned-player ID + name sets for filtering
     owned_fantrax = set()
     owned_yahoo = set()
     owned_nfbc = set()
+    owned_names = set()
     for roster in owned_rosters:
         p = roster.player
         if not p:
@@ -324,15 +325,25 @@ def generate_pickups_report(
             owned_yahoo.add(str(p.yahoo_id).strip())
         if p.nfbc_id:
             owned_nfbc.add(str(p.nfbc_id).strip())
+        if p.name:
+            owned_names.add(p.name.lower().strip())
+
+    print(f"[Pickups] owned: fantrax={len(owned_fantrax)} yahoo={len(owned_yahoo)} nfbc={len(owned_nfbc)} names={len(owned_names)}", flush=True)
 
     # Score and filter FAs
     fa_by_pos: Dict[str, list] = {}
     for proj in all_proj:
-        # Filter out owned players (try all three ID types)
+        # Filter out owned players — try IDs first, then name as fallback
         fid = str(proj.get("id_fantrax") or "").strip()
         yid = str(proj.get("id_yahoo") or "").strip()
         nid = str(proj.get("id_nffc") or "").strip()
-        if (fid and fid in owned_fantrax) or (yid and yid in owned_yahoo) or (nid and nid in owned_nfbc):
+        pname = str(proj.get("name") or "").lower().strip()
+        if (
+            (fid and fid in owned_fantrax)
+            or (yid and yid in owned_yahoo)
+            or (nid and nid in owned_nfbc)
+            or (pname and pname in owned_names)
+        ):
             continue
         # API may use "pos" or "position" — check both
         pos = proj.get("position") or proj.get("pos") or ""
