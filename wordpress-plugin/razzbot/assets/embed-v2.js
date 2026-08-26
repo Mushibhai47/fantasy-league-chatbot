@@ -5,9 +5,9 @@
 
 // Safe localStorage wrapper — Edge Tracking Prevention can block storage access
 const ls = {
-    get: (k) => { try { return ls.get(k); } catch(e) { return null; } },
-    set: (k, v) => { try { ls.set(k, v); } catch(e) {} },
-    remove: (k) => { try { ls.remove(k); } catch(e) {} }
+    get: (k) => { try { return localStorage.getItem(k); } catch(e) { return null; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch(e) {} },
+    remove: (k) => { try { localStorage.removeItem(k); } catch(e) {} }
 };
 
 // NFL custom scoring field definitions (matches Rudy's spreadsheet)
