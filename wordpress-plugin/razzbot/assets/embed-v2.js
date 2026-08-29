@@ -172,7 +172,9 @@ function setupEventListeners() {
     document.getElementById('espn-connect-btn')?.addEventListener('click', handleESPNImport);
     document.getElementById('espn-connect-btn-upload')?.addEventListener('click', handleESPNImportFromUploadScreen);
     document.getElementById('browse-btn').addEventListener('click', () => {
-        document.getElementById('file-input').click();
+        const fi = document.getElementById('file-input');
+        fi.value = '';  // reset so same filename triggers change event again
+        fi.click();
     });
     document.getElementById('skip-upload-btn')?.addEventListener('click', () => {
         // Skip CSV upload — user can still ask about any player by name
@@ -422,6 +424,11 @@ function showSetupScreen(step = 'api-key') {
 
     Object.values(steps).forEach(s => s.style.display = 'none');
     steps[step].style.display = 'block';
+
+    if (step === 'upload') {
+        const fi = document.getElementById('file-input');
+        if (fi) fi.value = '';
+    }
 }
 
 function showChatScreen() {

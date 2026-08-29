@@ -13,7 +13,7 @@ from app.database import get_db
 from app.models import League, Roster, Player
 from app.services.message_limit_service import MessageLimitService
 from app.services import nfl_projection_service as nfl_svc
-from app.services.nfl_scoring import calc_points, DEFAULT_WEIGHTS, PRESET_PROFILES
+from app.services.nfl_scoring import calc_points, get_pts, DEFAULT_WEIGHTS, PRESET_PROFILES
 from app.schemas.chat import ChatResponse
 
 logger = logging.getLogger(__name__)
@@ -213,7 +213,7 @@ def _position_table(pos_group: str, players_with_proj: list, label: str = "") ->
 # ── Hard-coded report generators ─────────────────────────────────────────────
 
 def generate_league_overview(
-    owned_rosters, ros_fantrax, ros_yahoo, weights: dict, all_teams: List[str], ros_nfbc: dict = None
+    owned_rosters, ros_fantrax, ros_yahoo, weights: dict, all_teams: List[str], ros_nfbc: dict = None, preset: str = None
 ) -> str:
     """Rank all teams by total ROS custom_pts."""
     team_pts: Dict[str, float] = {}
@@ -225,7 +225,7 @@ def generate_league_overview(
             continue
         owner = roster.team_owner
         proj = _match_player(player, ros_fantrax, ros_yahoo, ros_nfbc)
-        pts = calc_points(proj, weights) if proj else 0.0
+        pts = get_pts(proj, weights, preset) if proj else 0.0
         pos_grp = _pos_group(player.position or "")
 
         team_pts[owner] = team_pts.get(owner, 0.0) + pts
@@ -251,7 +251,7 @@ def generate_league_overview(
 
 def generate_team_overview(
     target_team: str, owned_rosters, ros_fantrax, ros_yahoo,
-    weights: dict, all_teams: List[str], ros_nfbc: dict = None
+    weights: dict, all_teams: List[str], ros_nfbc: dict = None, preset: str = None
 ) -> str:
     """Show one team's full roster, grouped by position."""
     matched = _find_team(target_team, all_teams)
@@ -267,7 +267,7 @@ def generate_team_overview(
         if not player:
             continue
         proj = _match_player(player, ros_fantrax, ros_yahoo, ros_nfbc)
-        pts = calc_points(proj, weights) if proj else 0.0
+        pts = get_pts(proj, weights, preset) if proj else 0.0
         pg = _pos_group(player.position or "")
         p_dict = {
             "name": player.name,
@@ -292,7 +292,7 @@ def generate_team_overview(
 
 def generate_pickups_report(
     projection_type: str, owned_rosters, weights: dict,
-    week: Optional[int] = None
+    week: Optional[int] = None, preset: str = None
 ) -> str:
     """Best available FAs by position group (weekly or ROS)."""
     if projection_type == "weekly":
@@ -350,7 +350,7 @@ def generate_pickups_report(
         pg = _pos_group(str(pos).upper())
         if pg == "OTHER":
             continue
-        pts = calc_points(proj, weights)
+        pts = get_pts(proj, weights, preset)
         p_dict = {
             "name": proj.get("name", "?"),
             "nfl_team": proj.get("team", ""),
@@ -377,7 +377,7 @@ def generate_pickups_report(
 
 def generate_start_sit(
     target_team: str, owned_rosters, weekly_fantrax, weekly_yahoo,
-    weights: dict, all_teams: List[str], week_label: str = "This Week", weekly_nfbc: dict = None
+    weights: dict, all_teams: List[str], week_label: str = "This Week", weekly_nfbc: dict = None, preset: str = None
 ) -> str:
     """Show user's team weekly projections sorted by custom_pts."""
     matched = _find_team(target_team, all_teams)
@@ -392,7 +392,7 @@ def generate_start_sit(
         if not player:
             continue
         proj = _match_player(player, weekly_fantrax, weekly_yahoo, weekly_nfbc)
-        pts = calc_points(proj, weights) if proj else 0.0
+        pts = get_pts(proj, weights, preset) if proj else 0.0
         pg = _pos_group(player.position or "")
         p_dict = {
             "name": player.name,
@@ -479,7 +479,7 @@ async def nfl_chat(
 
     if any(k in msg_lower for k in ("league overview", "league rank", "standings")):
         hard_coded = generate_league_overview(
-            owned_rosters, ros_fantrax, ros_yahoo, weights, all_teams, ros_nfbc=ros_nfbc
+            owned_rosters, ros_fantrax, ros_yahoo, weights, all_teams, ros_nfbc=ros_nfbc, preset=preset_label
         )
 
     elif any(k in msg_lower for k in ("team overview",)):
@@ -489,17 +489,17 @@ async def nfl_chat(
                 team_name = t
                 break
         hard_coded = generate_team_overview(
-            team_name, owned_rosters, ros_fantrax, ros_yahoo, weights, all_teams, ros_nfbc=ros_nfbc
+            team_name, owned_rosters, ros_fantrax, ros_yahoo, weights, all_teams, ros_nfbc=ros_nfbc, preset=preset_label
         )
 
     elif any(k in msg_lower for k in ("ros pickup", "ros pickups", "ros waiver", "best available ros")):
         hard_coded = generate_pickups_report(
-            "ros", owned_rosters, weights, week=week
+            "ros", owned_rosters, weights, week=week, preset=preset_label
         )
 
     elif any(k in msg_lower for k in ("weekly pickup", "pickups", "waiver wire", "waiver", "add", "best available")):
         hard_coded = generate_pickups_report(
-            "weekly", owned_rosters, weights, week=week
+            "weekly", owned_rosters, weights, week=week, preset=preset_label
         )
 
     elif any(k in msg_lower for k in ("start sit", "start/sit", "who to start", "weekly start")):
@@ -510,7 +510,7 @@ async def nfl_chat(
                 break
         hard_coded = generate_start_sit(
             team_name, owned_rosters, weekly_fantrax, weekly_yahoo,
-            weights, all_teams, week_label=weekly_label, weekly_nfbc=weekly_nfbc
+            weights, all_teams, week_label=weekly_label, weekly_nfbc=weekly_nfbc, preset=preset_label
         )
 
     # ── Build context for GPT ─────────────────────────────────────────────
@@ -530,7 +530,7 @@ async def nfl_chat(
             continue
         owner = roster.team_owner
         proj = _match_player(player, ros_fantrax, ros_yahoo, ros_nfbc)
-        pts = calc_points(proj, weights) if proj else 0.0
+        pts = get_pts(proj, weights, preset_label) if proj else 0.0
         pg = _pos_group(player.position or "")
         entry = f"{player.name} ({pg}) {_f(pts)} pts"
         if proj and proj.get("opp"):

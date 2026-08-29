@@ -109,6 +109,25 @@ def calc_points(player_row: dict, weights: Optional[Dict[str, float]] = None) ->
     return round(total, 2)
 
 
+_API_PRESET_FIELD = {
+    "standard":  "std_pts",
+    "half_ppr":  "halfppr_pts",
+    "ppr":       "ppr_pts",
+}
+
+
+def get_pts(player_row: dict, weights: Optional[Dict[str, float]] = None, preset: Optional[str] = None) -> float:
+    """Use API pre-calculated pts for standard presets; fall back to calc_points for custom."""
+    if preset in _API_PRESET_FIELD:
+        api_val = player_row.get(_API_PRESET_FIELD[preset])
+        if api_val is not None:
+            try:
+                return round(float(api_val), 2)
+            except (TypeError, ValueError):
+                pass
+    return calc_points(player_row, weights)
+
+
 def score_player_list(players: list, weights: Optional[Dict[str, float]] = None) -> list:
     """Add 'custom_pts' to each player dict and return sorted by custom_pts desc."""
     if weights is None:
