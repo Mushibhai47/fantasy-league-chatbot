@@ -283,31 +283,31 @@ function setupEventListeners() {
         if (settingsSel) settingsSel.value = e.target.value;
     });
 
-    // NFL scoring preset selector (Settings modal)
-    document.getElementById('settings-nfl-preset')?.addEventListener('change', (e) => {
+    // Settings dropdown — NFL preset
+    document.getElementById('dropdown-nfl-preset')?.addEventListener('change', (e) => {
         state.nflScoringPreset = e.target.value;
         ls.set('razzball_nfl_scoring_preset', e.target.value);
-        const panel = document.getElementById('settings-custom-panel');
-        if (panel) {
-            panel.style.display = e.target.value === 'custom' ? 'block' : 'none';
-            if (e.target.value === 'custom') buildCustomScoringPanel('settings-custom-fields');
+        const cp = document.getElementById('dropdown-custom-panel');
+        if (cp) {
+            cp.style.display = e.target.value === 'custom' ? 'block' : 'none';
+            if (e.target.value === 'custom') buildCustomScoringPanel('dropdown-custom-fields');
         }
-        // Keep ready screen in sync
+        // Keep ready screen selector in sync
         const readySel = document.getElementById('nfl-scoring-preset-selector');
         if (readySel) readySel.value = e.target.value;
     });
 
-    // Save scoring button in Settings modal
-    document.getElementById('settings-save-scoring-btn')?.addEventListener('click', () => {
-        ls.set('razzball_nfl_scoring_preset', state.nflScoringPreset);
-        if (state.nflCustomWeights) ls.set('razzball_nfl_custom_weights', JSON.stringify(state.nflCustomWeights));
-        const btn = document.getElementById('settings-save-scoring-btn');
-        if (btn) { btn.textContent = 'Saved!'; setTimeout(() => { btn.textContent = 'Save Scoring'; }, 2000); }
+    // Click outside dropdown to close
+    document.addEventListener('click', (e) => {
+        const dd = document.getElementById('settings-dropdown');
+        const btn = document.getElementById('settings-btn');
+        if (dd && dd.style.display === 'block' && !dd.contains(e.target) && e.target !== btn) {
+            dd.style.display = 'none';
+        }
     });
 
-    // Settings modal
-    document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
-    document.getElementById('close-modal-btn').addEventListener('click', closeSettingsModal);
+    // Legacy modal close button (kept in HTML, kept wired)
+    document.getElementById('close-modal-btn')?.addEventListener('click', closeSettingsModal);
     document.getElementById('edit-api-key-btn').addEventListener('click', () => {
         const input = document.getElementById('settings-api-key');
         input.readOnly = false;
@@ -1049,78 +1049,55 @@ function setLoadingState(loading) {
     }
 }
 
-// Settings Modal
-function openSettingsModal() {
-    const modal = document.getElementById('settings-modal');
-    modal.classList.add('active');
-    modal.style.display = 'flex';
-    modal.style.zIndex = '9999';
-
-    // Load current API key (masked)
-    const apiKeyInput = document.getElementById('settings-api-key');
-    if (state.apiKey) {
-        apiKeyInput.value = state.apiKey.substring(0, 10) + '...' + state.apiKey.substring(state.apiKey.length - 4);
-        apiKeyInput.placeholder = '';
-        apiKeyInput.readOnly = true;
-    } else {
-        apiKeyInput.value = '';
-        apiKeyInput.placeholder = 'No API key - using free tier (7 messages/day)';
-    }
-
-    // Display usage information
-    const usageInfo = document.getElementById('settings-usage-info');
-    if (state.apiKey) {
-        usageInfo.innerHTML = '<div style="font-size: 14px; color: #27ae60; font-weight: 600;">✨ Unlimited messages (using your API key)</div>';
-    } else {
-        const remaining = state.messagesRemaining !== null ? state.messagesRemaining : state.dailyLimit;
-        const used = state.dailyLimit - remaining;
-        const percentage = (used / state.dailyLimit * 100).toFixed(0);
-        const color = remaining <= 1 ? '#e74c3c' : (remaining <= 3 ? '#f39c12' : '#27ae60');
-
-        usageInfo.innerHTML = `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span style="color: #666;">Used today:</span>
-                <strong>${used} / ${state.dailyLimit}</strong>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                <span style="color: #666;">Remaining:</span>
-                <strong style="color: ${color}">${remaining} messages</strong>
-            </div>
-            <div style="width: 100%; height: 8px; background: #e0e0e0; border-radius: 4px; overflow: hidden; margin-top: 10px;">
-                <div style="width: ${percentage}%; height: 100%; background: ${color}; transition: width 0.3s;"></div>
-            </div>
-        `;
-    }
-
-    // NFL scoring — populate settings selector from current state
-    const settingsPreset = document.getElementById('settings-nfl-preset');
-    if (settingsPreset) {
-        settingsPreset.value = state.nflScoringPreset || 'half_ppr';
-        const customPanel = document.getElementById('settings-custom-panel');
-        if (customPanel) {
-            if (settingsPreset.value === 'custom') {
-                customPanel.style.display = 'block';
-                buildCustomScoringPanel('settings-custom-fields');
-            } else {
-                customPanel.style.display = 'none';
+// Settings Dropdown (replaces modal — modal was unreliable in WordPress)
+function toggleSettingsDropdown(e) {
+    if (e) e.stopPropagation();
+    const dd = document.getElementById('settings-dropdown');
+    if (!dd) return;
+    const isOpen = dd.style.display === 'block';
+    dd.style.display = isOpen ? 'none' : 'block';
+    if (!isOpen) {
+        // Populate NFL scoring preset
+        const presetSel = document.getElementById('dropdown-nfl-preset');
+        if (presetSel) {
+            presetSel.value = state.nflScoringPreset || 'half_ppr';
+            const cp = document.getElementById('dropdown-custom-panel');
+            if (cp) {
+                cp.style.display = presetSel.value === 'custom' ? 'block' : 'none';
+                if (presetSel.value === 'custom') buildCustomScoringPanel('dropdown-custom-fields');
             }
         }
     }
 }
 
-function closeSettingsModal() {
-    const modal = document.getElementById('settings-modal');
-    modal.classList.remove('active');
-    modal.style.display = 'none';
-    modal.style.zIndex = '';
+function closeSettingsDropdown() {
+    const dd = document.getElementById('settings-dropdown');
+    if (dd) dd.style.display = 'none';
+}
 
-    // Save any changes to API key
-    const apiKeyInput = document.getElementById('settings-api-key');
-    if (!apiKeyInput.readOnly && apiKeyInput.value.startsWith('sk-')) {
-        state.apiKey = apiKeyInput.value;
-        ls.set('razzball_api_key', apiKeyInput.value);
-        // Update message counter to show unlimited
-        updateMessageCounter(null);
+// Keep these as aliases so any remaining references don't break
+function openSettingsModal() { toggleSettingsDropdown(); }
+function closeSettingsModal() { closeSettingsDropdown(); }
+
+function handleDropdownReupload() {
+    closeSettingsDropdown();
+    showSetupScreen('upload');
+}
+
+function handleDropdownClear() {
+    if (confirm('Clear all data? You will need to re-upload your league file.')) {
+        state.apiKey = null;
+        state.leagueId = null;
+        state.selectedTeam = null;
+        state.conversationHistory = [];
+        ls.remove('razzball_api_key');
+        ls.remove('razzball_league_id');
+        ls.remove('razzball_selected_team');
+        ls.remove('razzball_league_type');
+        ls.remove('razzball_nfl_scoring_preset');
+        ls.remove('razzball_nfl_custom_weights');
+        closeSettingsDropdown();
+        showSetupScreen('api-key');
     }
 }
 

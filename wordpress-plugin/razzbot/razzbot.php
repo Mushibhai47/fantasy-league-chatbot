@@ -10,7 +10,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'RAZZBOT_VERSION',    '1.1.6' );
+define( 'RAZZBOT_VERSION',    '1.1.7' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // ─── Enqueue CSS & JS only on the page that uses the shortcode ──────────────
@@ -185,9 +185,30 @@ function razzball_chatbot_shortcode( $atts ) {
         <div id="chat-screen" class="screen">
             <div class="chat-header">
                 <h3>Razzbot</h3>
-                <div class="header-actions">
+                <div class="header-actions" style="position:relative;">
                     <span id="league-indicator" class="league-badge">League Loaded</span>
-                    <button id="settings-btn" class="icon-btn" title="Settings" onclick="openSettingsModal()">⚙️</button>
+                    <button id="settings-btn" class="icon-btn" title="Settings" onclick="toggleSettingsDropdown(event)">⚙️</button>
+                    <div id="settings-dropdown" style="display:none;position:absolute;top:110%;right:0;width:280px;background:#fff;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.18);z-index:99999;padding:16px;color:#333;font-size:14px;">
+                        <div style="font-weight:700;font-size:15px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #eee;">⚙️ Settings</div>
+
+                        <?php if ($is_nfl): ?>
+                        <div style="margin-bottom:12px;">
+                            <label style="font-weight:600;display:block;margin-bottom:4px;">Scoring Format</label>
+                            <select id="dropdown-nfl-preset" style="width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font-size:13px;">
+                                <option value="half_ppr">Half PPR (default)</option>
+                                <option value="standard">Standard (no PPR)</option>
+                                <option value="ppr">Full PPR</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            <div id="dropdown-custom-panel" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto;border:1px solid #ddd;border-radius:6px;padding:8px;background:#f9f9f9;">
+                                <div id="dropdown-custom-fields"></div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+
+                        <button onclick="handleDropdownReupload()" style="width:100%;padding:8px;background:#003366;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:8px;">📂 Upload New League File</button>
+                        <button onclick="handleDropdownClear()" style="width:100%;padding:8px;background:#e53935;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;">🗑 Clear All Data</button>
+                    </div>
                 </div>
             </div>
 
