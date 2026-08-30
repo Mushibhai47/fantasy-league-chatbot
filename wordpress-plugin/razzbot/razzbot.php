@@ -10,7 +10,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'RAZZBOT_VERSION',    '1.1.8' );
+define( 'RAZZBOT_VERSION',    '1.1.9' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // ─── Enqueue CSS & JS only on the page that uses the shortcode ──────────────
@@ -127,7 +127,7 @@ function razzball_chatbot_shortcode( $atts ) {
                         <p>Drag and drop your league file here</p>
                         <p class="upload-or">or</p>
                         <input type="file" id="file-input" accept=".csv,.xls,.xlsx" style="display: none;" />
-                        <button id="browse-btn" class="btn btn-secondary">Browse Files</button>
+                        <label id="browse-btn" for="file-input" class="btn btn-secondary" style="cursor:pointer;display:inline-block;">Browse Files</label>
                     </div>
                     <div id="upload-status" class="status-message"></div>
                     <p style="text-align:center; margin-top: 12px; font-size: 13px; color: #888;">or</p>

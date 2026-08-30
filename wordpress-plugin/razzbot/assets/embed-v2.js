@@ -173,8 +173,8 @@ function setupEventListeners() {
     document.getElementById('espn-connect-btn-upload')?.addEventListener('click', handleESPNImportFromUploadScreen);
     document.getElementById('browse-btn').addEventListener('click', () => {
         const fi = document.getElementById('file-input');
-        fi.value = '';  // reset so same filename triggers change event again
-        fi.click();
+        if (fi) fi.value = '';  // reset so same filename triggers change event again
+        // label's for="file-input" opens the dialog natively — no fi.click() needed
     });
     document.getElementById('skip-upload-btn')?.addEventListener('click', () => {
         // Skip CSV upload — user can still ask about any player by name
