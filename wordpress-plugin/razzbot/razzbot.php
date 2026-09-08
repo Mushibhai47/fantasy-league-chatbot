@@ -10,7 +10,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'RAZZBOT_VERSION',    '1.1.9' );
+define( 'RAZZBOT_VERSION',    '1.2.0' );
 define( 'RAZZBOT_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 // ─── Enqueue CSS & JS only on the page that uses the shortcode ──────────────
@@ -107,18 +107,23 @@ function razzball_chatbot_shortcode( $atts ) {
 
                     <?php if ( ! $is_nfl ) : ?>
                     <button id="yahoo-connect-btn-upload" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#6001d2; border-color:#6001d2;" onclick="window.location.href='https://valiant-healing-production-ce05.up.railway.app/api/yahoo/auth'">⚾ Connect Yahoo Fantasy League</button>
+                    <p style="text-align:center; font-size:13px; color:#888; margin:8px 0;">or upload a CSV</p>
+                    <?php endif; ?>
 
-                    <div style="margin-bottom:12px; padding:12px; border:1px solid #eee; border-radius:6px; background:#fafafa;">
-                        <label style="font-weight:600; display:block; margin-bottom:6px; font-size:13px;">⚾ Connect ESPN Fantasy League</label>
-                        <p style="font-size:12px; color:#444; margin:0 0 8px; line-height:1.6;">
-                            <strong>Step 1:</strong> Click <strong>Copy Code</strong> below.<br>
-                            <strong>Step 2:</strong> In Chrome: press <kbd style="background:#eee;padding:1px 4px;border-radius:3px;">Ctrl+D</kbd> → <em>Edit...</em> → paste the code as the URL → Save.<br>
-                            <strong>Step 3:</strong> Go to your <a href="https://fantasy.espn.com/baseball/league" target="_blank">ESPN Fantasy Baseball league</a> page, click the bookmark.
-                        </p>
-                        <textarea id="espn-bm-code-upload" rows="2" readonly style="width:100%;font-size:10px;padding:6px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;resize:none;background:#f8f8f8;color:#333;font-family:monospace;" placeholder="Loading..."></textarea>
-                        <button onclick="var t=document.getElementById('espn-bm-code-upload');t.select();document.execCommand('copy');this.textContent='Copied!';" style="width:100%;margin-top:6px;padding:8px;background:#cc0000;color:#fff;border:none;border-radius:4px;font-weight:700;cursor:pointer;font-size:13px;">Copy Code</button>
+                    <?php if ( $is_nfl ) : ?>
+                    <div id="sleeper-connect-section" style="margin-bottom:12px;">
+                        <button id="sleeper-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#01ad96; border-color:#01ad96;">🏈 Connect Sleeper League</button>
+                        <div id="sleeper-input-area" style="display:none;">
+                            <input type="text" id="sleeper-username-input" placeholder="Enter your Sleeper username" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; box-sizing:border-box; margin-bottom:8px;" />
+                            <button id="sleeper-lookup-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px;">Find My Leagues</button>
+                            <div id="sleeper-leagues-area" style="display:none;">
+                                <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px; color:#555;">Select a league:</label>
+                                <select id="sleeper-league-select" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; margin-bottom:8px; background:white;"></select>
+                                <button id="sleeper-import-btn" class="btn btn-primary" style="width:100%; background:#01ad96; border-color:#01ad96;">Import League</button>
+                            </div>
+                            <div id="sleeper-status" class="status-message"></div>
+                        </div>
                     </div>
-
                     <p style="text-align:center; font-size:13px; color:#888; margin:8px 0;">or upload a CSV</p>
                     <?php endif; ?>
 

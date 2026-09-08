@@ -169,8 +169,7 @@ function setupEventListeners() {
         showSetupScreen('upload');
     });
     document.getElementById('yahoo-connect-btn')?.addEventListener('click', handleYahooConnect);
-    document.getElementById('espn-connect-btn')?.addEventListener('click', handleESPNImport);
-    document.getElementById('espn-connect-btn-upload')?.addEventListener('click', handleESPNImportFromUploadScreen);
+    setupSleeperListeners();
     document.getElementById('browse-btn').addEventListener('click', () => {
         const fi = document.getElementById('file-input');
         if (fi) fi.value = '';  // reset so same filename triggers change event again
@@ -1175,9 +1174,116 @@ window.RazzballChatbot = {
     }
 };
 
-// Expose ESPN/Yahoo handlers to global scope for inline onclick attributes
-window.handleESPNImport = handleESPNImport;
-window.handleESPNImportFromUploadScreen = handleESPNImportFromUploadScreen;
+// ── Sleeper integration ───────────────────────────────────────────────────────
+
+function setupSleeperListeners() {
+    const connectBtn = document.getElementById('sleeper-connect-btn');
+    const inputArea  = document.getElementById('sleeper-input-area');
+    const lookupBtn  = document.getElementById('sleeper-lookup-btn');
+    const importBtn  = document.getElementById('sleeper-import-btn');
+    if (!connectBtn) return;  // not an NFL page
+
+    connectBtn.addEventListener('click', () => {
+        const visible = inputArea.style.display !== 'none';
+        inputArea.style.display = visible ? 'none' : 'block';
+        if (!visible) document.getElementById('sleeper-username-input')?.focus();
+    });
+
+    lookupBtn?.addEventListener('click', handleSleeperLookup);
+    document.getElementById('sleeper-username-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleSleeperLookup();
+    });
+    importBtn?.addEventListener('click', handleSleeperImport);
+}
+
+async function handleSleeperLookup() {
+    const username = (document.getElementById('sleeper-username-input')?.value || '').trim();
+    const statusEl = document.getElementById('sleeper-status');
+    const leaguesArea = document.getElementById('sleeper-leagues-area');
+    const select = document.getElementById('sleeper-league-select');
+
+    if (!username) { statusEl.textContent = 'Please enter your Sleeper username.'; return; }
+
+    statusEl.textContent = 'Looking up your leagues…';
+    leaguesArea.style.display = 'none';
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/sleeper/user/${encodeURIComponent(username)}`);
+        if (!res.ok) throw new Error('User not found');
+        const data = await res.json();
+
+        if (!data.leagues || data.leagues.length === 0) {
+            statusEl.textContent = 'No NFL leagues found for this username.';
+            return;
+        }
+
+        select.innerHTML = data.leagues.map(lg =>
+            `<option value="${lg.league_id}">${lg.name} (${lg.total_rosters} teams, ${lg.status})</option>`
+        ).join('');
+
+        leaguesArea.style.display = 'block';
+        statusEl.textContent = `Found ${data.leagues.length} league(s). Select one and click Import.`;
+    } catch (err) {
+        statusEl.textContent = `Error: ${err.message}`;
+    }
+}
+
+async function handleSleeperImport() {
+    const leagueId = document.getElementById('sleeper-league-select')?.value;
+    const statusEl = document.getElementById('sleeper-status');
+    if (!leagueId) return;
+
+    statusEl.textContent = 'Importing league… this may take 15–20 seconds (fetching player data).';
+
+    const body = { league_id: leagueId };
+    if (state.leagueId) body.existing_league_id = state.leagueId;
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/sleeper/import`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || 'Import failed');
+        }
+        const data = await res.json();
+
+        // Store league state — same as after CSV upload
+        state.leagueId   = data.id;
+        state.sport       = data.sport || 'nfl';
+        state.leagueType  = 'sleeper';
+
+        // Auto-set scoring from Sleeper league settings
+        if (data.preset) {
+            state.scoringPreset  = data.preset;
+            state.scoringWeights = null;
+        } else if (data.weights) {
+            state.scoringPreset  = 'custom';
+            state.scoringWeights = data.weights;
+        }
+
+        ls.set('razzball_league_id',   state.leagueId);
+        ls.set('razzball_sport',       state.sport);
+        ls.set('razzball_league_type', 'sleeper');
+        ls.set('razzball_scoring_preset', state.scoringPreset || 'half_ppr');
+
+        // Populate team selector
+        const teamSel = document.getElementById('team-selector');
+        if (teamSel && data.teams) {
+            teamSel.innerHTML = '<option value="">-- Select your team --</option>' +
+                data.teams.map(t => `<option value="${t}">${t}</option>`).join('');
+        }
+
+        showSetupScreen('ready');
+        statusEl.textContent = '';
+    } catch (err) {
+        statusEl.textContent = `Import failed: ${err.message}`;
+    }
+}
+
+// Expose Yahoo handler to global scope for inline onclick attributes
 window.handleYahooConnect = handleYahooConnect;
 
 console.log('Razzbot loaded successfully');

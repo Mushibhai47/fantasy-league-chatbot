@@ -78,7 +78,7 @@ async def health_check():
 
 
 # Include routers
-from app.routers import csv, chat, admin, yahoo, espn, nfl, nfl_chat
+from app.routers import csv, chat, admin, yahoo, espn, nfl, nfl_chat, sleeper
 
 app.include_router(csv.router, prefix="/api/csv", tags=["CSV Upload"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chatbot"])
@@ -87,3 +87,4 @@ app.include_router(yahoo.router, prefix="/api/yahoo", tags=["Yahoo Fantasy"])
 app.include_router(espn.router, prefix="/api/espn", tags=["ESPN Fantasy"])
 app.include_router(nfl.router, prefix="/api/nfl", tags=["NFL Fantasy"])
 app.include_router(nfl_chat.router, prefix="/api/nfl/chat", tags=["NFL Chat"])
+app.include_router(sleeper.router, prefix="/api/sleeper", tags=["Sleeper Fantasy"])

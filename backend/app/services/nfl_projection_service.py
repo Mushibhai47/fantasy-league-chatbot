@@ -136,6 +136,16 @@ def build_nfbc_lookup(players: List[dict]) -> Dict[str, dict]:
     return lookup
 
 
+def build_name_lookup(players: List[dict]) -> Dict[str, dict]:
+    """Return {normalized_name -> player_row} for name-based fallback matching (e.g. Sleeper)."""
+    lookup = {}
+    for p in players:
+        name = str(p.get("name") or "").lower().strip()
+        if name:
+            lookup[name] = p
+    return lookup
+
+
 def calc_custom_points(player_row: dict, scoring: dict) -> float:
     """
     Calculate fantasy points from raw stat projections using a custom scoring dict.
