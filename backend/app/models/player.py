@@ -22,6 +22,7 @@ class Player(Base):
     nfbc_id = Column(Integer, index=True)  # 11802
     cbs_player_name = Column(String(255), index=True)  # "Aaron Judge OF | NYY"
     yahoo_id = Column(String(50), index=True)  # Yahoo player ID
+    sleeper_id = Column(String(50), index=True)  # Sleeper player ID
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

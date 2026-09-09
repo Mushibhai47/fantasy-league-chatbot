@@ -137,12 +137,32 @@ def build_nfbc_lookup(players: List[dict]) -> Dict[str, dict]:
 
 
 def build_name_lookup(players: List[dict]) -> Dict[str, dict]:
-    """Return {normalized_name -> player_row} for name-based fallback matching (e.g. Sleeper)."""
+    """Return {normalized_name -> player_row} for name-based fallback matching."""
     lookup = {}
     for p in players:
         name = str(p.get("name") or "").lower().strip()
         if name:
             lookup[name] = p
+    return lookup
+
+
+def build_sleeper_lookup(players: List[dict]) -> Dict[str, dict]:
+    """Return {sleeper_id -> player_row} for Sleeper league matching."""
+    lookup = {}
+    for p in players:
+        sid = str(p.get("id_sleeper") or "").strip()
+        if sid and sid not in ("None", "0", ""):
+            lookup[sid] = p
+    return lookup
+
+
+def build_cbs_lookup(players: List[dict]) -> Dict[str, dict]:
+    """Return {cbs_player_id -> player_row} for CBS Sports matching."""
+    lookup = {}
+    for p in players:
+        cid = str(p.get("id_cbs_player") or "").strip()
+        if cid and cid not in ("None", "0", ""):
+            lookup[cid] = p
     return lookup
 
 
