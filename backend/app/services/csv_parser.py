@@ -52,6 +52,9 @@ class CSVParser:
 
         # CBS Sports has 'Avail' column (team owner name)
         if 'avail' in columns:
+            # CBS NFL has an 'Opp' column; CBS MLB does not
+            if 'opp' in columns:
+                return 'cbs_nfl'
             return 'cbs'
 
         # NFBC/NFFC has 'Owner' column and numeric 'id'
@@ -176,6 +179,66 @@ class CSVParser:
         return players
 
     @staticmethod
+    def parse_cbs_nfl(file_path: str) -> List[Dict]:
+        """
+        Parse CBS Sports NFL CSV.
+        Format: 2 junk header rows, then:
+          Avail, Player, Opp, OVP, Bye, Rost, Start, ATT, Comp, Yds, TD, ...
+        Player format: "Malik Washington WR | MIA"
+        Avail: team owner name or "FA" for free agents.
+        """
+        df = CSVParser._read_file(file_path, skiprows=2)
+        players = []
+
+        for _, row in df.iterrows():
+            player_raw = row.get('Player', None)
+            if pd.isna(player_raw) or str(player_raw).strip() in ('', 'nan'):
+                continue
+
+            avail_val = row.get('Avail', None)
+            if pd.notna(avail_val) and str(avail_val).strip() not in ('', 'FA'):
+                cleaned = str(avail_val).strip()
+                if re.match(r'^W\s*\(', cleaned, re.IGNORECASE):
+                    owner = 'Free Agent'
+                else:
+                    owner = cleaned
+            else:
+                owner = 'Free Agent'
+
+            player_str = str(player_raw).strip()
+            position = None
+            nfl_team = None
+
+            if '|' in player_str:
+                name_pos, team_part = player_str.split('|', 1)
+                nfl_team = team_part.strip()
+                pos_match = re.search(r'\s+([A-Z][A-Z0-9/]*)(?:\s+[A-Z][A-Z0-9/]*)*\s*$', name_pos)
+                if pos_match:
+                    raw_pos = pos_match.group(0).strip()
+                    for tok in re.split(r'[\s,/]+', raw_pos):
+                        tok = tok.strip().upper()
+                        if tok in CSVParser._NFL_POSITIONS:
+                            position = tok
+                            break
+                name = re.sub(r'\s+[A-Z][A-Z0-9/]*\s*$', '', name_pos).strip()
+            else:
+                name = player_str
+                nfl_team = None
+
+            players.append({
+                'name': name,
+                'mlb_team': nfl_team,
+                'position': position,
+                'owner': owner,
+                'league_type': 'cbs_nfl',
+                'sport': 'nfl',
+                'fantrax_id': None,
+                'nfbc_id': None,
+            })
+
+        return players
+
+    @staticmethod
     def parse_fantrax_nfl(file_path: str) -> List[Dict]:
         """
         Parse Fantrax NFL CSV.
@@ -274,10 +337,18 @@ class CSVParser:
         except:
             league_type = 'unknown'
 
-        # If detection failed, try skipping first row (CBS format)
+        # If detection failed, try skipping 1 row (CBS MLB format)
         if league_type == 'unknown':
             try:
                 df_sample = CSVParser._read_file(file_path, skiprows=1, nrows=5)
+                league_type = CSVParser.detect_league_type(df_sample)
+            except:
+                pass
+
+        # If still unknown, try skipping 2 rows (CBS NFL format)
+        if league_type == 'unknown':
+            try:
+                df_sample = CSVParser._read_file(file_path, skiprows=2, nrows=5)
                 league_type = CSVParser.detect_league_type(df_sample)
             except:
                 pass
@@ -288,6 +359,8 @@ class CSVParser:
             players = CSVParser.parse_fantrax(file_path)
         elif league_type in ('nfbc_nfl',):
             players = CSVParser.parse_nfbc(file_path)
+        elif league_type == 'cbs_nfl':
+            players = CSVParser.parse_cbs_nfl(file_path)
         elif league_type == 'cbs':
             players = CSVParser.parse_cbs(file_path)
         elif league_type == 'nfbc':

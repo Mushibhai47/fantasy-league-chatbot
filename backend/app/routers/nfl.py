@@ -43,11 +43,11 @@ async def upload_nfl_csv(
         parser = CSVParser()
         players_data, league_type = parser.parse_csv(tmp_path)
 
-        if league_type != 'fantrax_nfl':
+        if league_type not in ('fantrax_nfl', 'cbs_nfl'):
             raise HTTPException(
                 status_code=400,
-                detail=f"Expected an NFL Fantrax CSV but detected: '{league_type}'. "
-                       "Make sure you're uploading the full league player export from Fantrax with NFL positions."
+                detail=f"Expected an NFL CSV (Fantrax or CBS Sports) but detected: '{league_type}'. "
+                       "Make sure you're uploading the full league player export with NFL positions."
             )
 
         # Replace existing league if re-uploading
@@ -72,7 +72,7 @@ async def upload_nfl_csv(
         league = League(
             id=uuid.uuid4(),
             user_id=user.id,
-            league_type='fantrax',
+            league_type='cbs' if league_type == 'cbs_nfl' else 'fantrax',
             sport='nfl',
             csv_filename=file.filename,
         )
