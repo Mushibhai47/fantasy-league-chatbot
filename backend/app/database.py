@@ -46,6 +46,12 @@ def _run_migrations():
             conn.execute(text(
                 "ALTER TABLE leagues ADD COLUMN IF NOT EXISTS sport VARCHAR(10) DEFAULT 'mlb'"
             ))
+            conn.execute(text(
+                "ALTER TABLE players ADD COLUMN IF NOT EXISTS sleeper_id VARCHAR(50)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_players_sleeper_id ON players(sleeper_id)"
+            ))
             conn.commit()
         else:
             # SQLite: check if column exists before adding
@@ -53,7 +59,11 @@ def _run_migrations():
             cols = [row[1] for row in result.fetchall()]
             if 'sport' not in cols:
                 conn.execute(text("ALTER TABLE leagues ADD COLUMN sport VARCHAR(10) DEFAULT 'mlb'"))
-                conn.commit()
+            result2 = conn.execute(text("PRAGMA table_info(players)"))
+            player_cols = [row[1] for row in result2.fetchall()]
+            if 'sleeper_id' not in player_cols:
+                conn.execute(text("ALTER TABLE players ADD COLUMN sleeper_id VARCHAR(50)"))
+            conn.commit()
     # scoring_profiles table is created by create_all() above (new table, no ALTER needed)
 
 
