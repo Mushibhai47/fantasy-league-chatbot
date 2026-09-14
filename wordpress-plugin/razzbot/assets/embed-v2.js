@@ -1283,7 +1283,8 @@ async function handleSleeperImport() {
     }
 }
 
-// Expose Yahoo handler to global scope for inline onclick attributes
+// Expose handlers to global scope for inline onclick attributes
 window.handleYahooConnect = handleYahooConnect;
+window.toggleSettingsDropdown = toggleSettingsDropdown;
 
 console.log('Razzbot loaded successfully');

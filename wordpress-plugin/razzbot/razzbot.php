@@ -74,6 +74,8 @@ function razzball_chatbot_shortcode( $atts ) {
     if ( $force_sport ) {
         echo '<script>window.razzbotForceSport=' . wp_json_encode( $force_sport ) . ';</script>';
     }
+    // Inline fallback for gear dropdown — works even if embed-v2.js is cached/old
+    echo '<script>function toggleSettingsDropdown(e){if(e)e.stopPropagation();var d=document.getElementById("settings-dropdown");if(d)d.style.display=d.style.display==="block"?"none":"block";}</script>';
     ?>
     <div id="razzball-chatbot-embed">
 
@@ -112,7 +114,7 @@ function razzball_chatbot_shortcode( $atts ) {
 
                     <?php if ( $is_nfl ) : ?>
                     <div id="sleeper-connect-section" style="margin-bottom:12px;">
-                        <button id="sleeper-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#01ad96; border-color:#01ad96;">🏈 Connect Sleeper League</button>
+                        <button id="sleeper-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#01ad96; border-color:#01ad96;" onclick="var a=document.getElementById('sleeper-input-area');a.style.display=a.style.display==='none'?'block':'none';">🏈 Connect Sleeper League</button>
                         <div id="sleeper-input-area" style="display:none;">
                             <input type="text" id="sleeper-username-input" placeholder="Enter your Sleeper username" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; box-sizing:border-box; margin-bottom:8px;" />
                             <button id="sleeper-lookup-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px;">Find My Leagues</button>

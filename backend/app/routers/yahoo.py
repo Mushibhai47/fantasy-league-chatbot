@@ -175,6 +175,7 @@ async def yahoo_auth():
         f"?client_id={client_id}"
         f"&redirect_uri={redirect_uri}"
         f"&response_type=code"
+        f"&scope=fspt-r"
         f"&language=en-us"
     )
     return RedirectResponse(url=auth_url)
