@@ -31,6 +31,9 @@ async def get_sleeper_user_leagues(username: str):
     except Exception:
         raise HTTPException(status_code=404, detail=f"Sleeper user '{username}' not found")
 
+    if not user:
+        raise HTTPException(status_code=404, detail=f"Sleeper user '{username}' not found")
+
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=404, detail="Invalid Sleeper user")
