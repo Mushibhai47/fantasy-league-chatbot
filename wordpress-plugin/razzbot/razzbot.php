@@ -117,16 +117,50 @@ function razzball_chatbot_shortcode( $atts ) {
                         <button id="sleeper-connect-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px; background:#01ad96; border-color:#01ad96;" onclick="var a=document.getElementById('sleeper-input-area');a.style.display=a.style.display==='none'?'block':'none';">🏈 Connect Sleeper League</button>
                         <div id="sleeper-input-area" style="display:none;">
                             <input type="text" id="sleeper-username-input" placeholder="Enter your Sleeper username" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; box-sizing:border-box; margin-bottom:8px;" />
-                            <button id="sleeper-lookup-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px;">Find My Leagues</button>
+                            <button id="sleeper-lookup-btn" class="btn btn-primary" style="width:100%; margin-bottom:8px;" onclick="rzSleeperLookup()">Find My Leagues</button>
                             <div id="sleeper-leagues-area" style="display:none;">
                                 <label style="font-size:13px; font-weight:600; display:block; margin-bottom:4px; color:#555;">Select a league:</label>
                                 <select id="sleeper-league-select" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px; font-size:14px; margin-bottom:8px; background:white;"></select>
-                                <button id="sleeper-import-btn" class="btn btn-primary" style="width:100%; background:#01ad96; border-color:#01ad96;">Import League</button>
+                                <button id="sleeper-import-btn" class="btn btn-primary" style="width:100%; background:#01ad96; border-color:#01ad96;" onclick="rzSleeperImport()">Import League</button>
                             </div>
                             <div id="sleeper-status" class="status-message"></div>
                         </div>
                     </div>
                     <p style="text-align:center; font-size:13px; color:#888; margin:8px 0;">or upload a CSV</p>
+                    <script>
+                    var RZ_API = window.location.hostname==='localhost'?'http://localhost:8000/api':'https://valiant-healing-production-ce05.up.railway.app/api';
+                    async function rzSleeperLookup(){
+                        var u=(document.getElementById('sleeper-username-input').value||'').trim();
+                        var s=document.getElementById('sleeper-status');
+                        var la=document.getElementById('sleeper-leagues-area');
+                        var sel=document.getElementById('sleeper-league-select');
+                        if(!u){s.textContent='Please enter your Sleeper username.';return;}
+                        s.textContent='Looking up your leagues…';la.style.display='none';
+                        try{
+                            var r=await fetch(RZ_API+'/sleeper/user/'+encodeURIComponent(u));
+                            if(!r.ok)throw new Error('User not found');
+                            var d=await r.json();
+                            if(!d.leagues||!d.leagues.length){s.textContent='No NFL leagues found for this username.';return;}
+                            sel.innerHTML=d.leagues.map(function(lg){return'<option value="'+lg.league_id+'">'+lg.name+' ('+lg.total_rosters+' teams, '+lg.status+')</option>';}).join('');
+                            la.style.display='block';
+                            s.textContent='Found '+d.leagues.length+' league(s). Select one and click Import.';
+                        }catch(e){s.textContent='Error: '+e.message;}
+                    }
+                    async function rzSleeperImport(){
+                        var lid=document.getElementById('sleeper-league-select').value;
+                        var s=document.getElementById('sleeper-status');
+                        if(!lid)return;
+                        s.textContent='Importing league… this may take 15–20 seconds.';
+                        try{
+                            var r=await fetch(RZ_API+'/sleeper/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({league_id:lid})});
+                            if(!r.ok){var er=await r.json().catch(function(){return{};});throw new Error(er.detail||'Import failed');}
+                            var d=await r.json();
+                            s.textContent='League imported! Loading…';
+                            if(window.RazzballChatbot&&window.RazzballChatbot.loadLeague){window.RazzballChatbot.loadLeague(d);}
+                            else{setTimeout(function(){location.reload();},1500);}
+                        }catch(e){s.textContent='Error: '+e.message;}
+                    }
+                    </script>
                     <?php endif; ?>
 
                     <div class="upload-area" id="upload-area">
