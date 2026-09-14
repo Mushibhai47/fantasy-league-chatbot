@@ -14,8 +14,8 @@ class Player(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     razzball_id = Column(Integer, unique=True, index=True)  # From RazzID
     name = Column(String(255), nullable=False, index=True)
-    team = Column(String(10))  # MLB team (NYY, BOS, etc.)
-    position = Column(String(20))  # OF, SP, RP, etc.
+    team = Column(String(50))  # MLB team (NYY, BOS, etc.) — may be multi-team e.g. BAL/DET/ATL
+    position = Column(String(50))  # OF, SP, RP, etc. — may be multi-pos e.g. 1B,2B,3B,SS,OF
 
     # Platform-specific IDs
     fantrax_id = Column(String(50), index=True)  # *05ajh*

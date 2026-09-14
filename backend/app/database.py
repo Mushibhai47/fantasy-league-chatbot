@@ -52,6 +52,13 @@ def _run_migrations():
             conn.execute(text(
                 "CREATE INDEX IF NOT EXISTS ix_players_sleeper_id ON players(sleeper_id)"
             ))
+            # Widen columns that were too narrow for multi-team/multi-position values
+            conn.execute(text(
+                "ALTER TABLE players ALTER COLUMN team TYPE VARCHAR(50)"
+            ))
+            conn.execute(text(
+                "ALTER TABLE players ALTER COLUMN position TYPE VARCHAR(50)"
+            ))
             conn.commit()
         else:
             # SQLite: check if column exists before adding
